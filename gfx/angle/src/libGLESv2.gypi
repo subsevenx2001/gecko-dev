@@ -36,8 +36,8 @@
             'common/third_party/base/anglebase/sha1.cc',
             'common/third_party/base/anglebase/sha1.h',
             'common/third_party/base/anglebase/sys_byteorder.h',
-            'common/third_party/murmurhash/MurmurHash3.cpp',
-            'common/third_party/murmurhash/MurmurHash3.h',
+            'common/third_party/smhasher/src/PMurHash.cpp',
+            'common/third_party/smhasher/src/PMurHash.h',
             'common/tls.cpp',
             'common/tls.h',
             'common/uniform_type_info_autogen.cpp',
@@ -169,11 +169,16 @@
             'libANGLE/LoggingAnnotator.h',
             'libANGLE/MemoryProgramCache.cpp',
             'libANGLE/MemoryProgramCache.h',
+            'libANGLE/PackedGLEnums.h',
+            'libANGLE/PackedGLEnums_autogen.cpp',
+            'libANGLE/PackedGLEnums_autogen.h',
             'libANGLE/Path.h',
             'libANGLE/Path.cpp',
             'libANGLE/Platform.cpp',
             'libANGLE/Program.cpp',
             'libANGLE/Program.h',
+            'libANGLE/ProgramLinkedResources.cpp',
+            'libANGLE/ProgramLinkedResources.h',
             'libANGLE/ProgramPipeline.cpp',
             'libANGLE/ProgramPipeline.h',
             'libANGLE/Query.cpp',
@@ -203,8 +208,6 @@
             'libANGLE/TransformFeedback.h',
             'libANGLE/Uniform.cpp',
             'libANGLE/Uniform.h',
-            'libANGLE/UniformLinker.cpp',
-            'libANGLE/UniformLinker.h',
             'libANGLE/VaryingPacking.cpp',
             'libANGLE/VaryingPacking.h',
             'libANGLE/Version.h',
@@ -522,8 +525,8 @@
             'libANGLE/renderer/d3d/d3d11/shaders/compiled/swizzleui3dps.h',
             'libANGLE/renderer/d3d/d3d11/StateManager11.cpp',
             'libANGLE/renderer/d3d/d3d11/StateManager11.h',
-            'libANGLE/renderer/d3d/d3d11/StreamProducerNV12.cpp',
-            'libANGLE/renderer/d3d/d3d11/StreamProducerNV12.h',
+            'libANGLE/renderer/d3d/d3d11/StreamProducerD3DTexture.cpp',
+            'libANGLE/renderer/d3d/d3d11/StreamProducerD3DTexture.h',
             'libANGLE/renderer/d3d/d3d11/SwapChain11.cpp',
             'libANGLE/renderer/d3d/d3d11/SwapChain11.h',
             'libANGLE/renderer/d3d/d3d11/TextureStorage11.cpp',
@@ -571,6 +574,8 @@
             'libANGLE/renderer/gl/CompilerGL.h',
             'libANGLE/renderer/gl/ContextGL.cpp',
             'libANGLE/renderer/gl/ContextGL.h',
+            'libANGLE/renderer/gl/DispatchTableGL_autogen.cpp',
+            'libANGLE/renderer/gl/DispatchTableGL_autogen.h',
             'libANGLE/renderer/gl/DisplayGL.cpp',
             'libANGLE/renderer/gl/DisplayGL.h',
             'libANGLE/renderer/gl/FenceNVGL.cpp',
@@ -615,6 +620,11 @@
             'libANGLE/renderer/gl/renderergl_utils.cpp',
             'libANGLE/renderer/gl/renderergl_utils.h',
         ],
+        'libangle_gl_null_sources':
+        [
+            'libANGLE/renderer/gl/null_functions.cpp',
+            'libANGLE/renderer/gl/null_functions.h',
+        ],
         'libangle_gl_wgl_sources':
         [
             'libANGLE/renderer/gl/wgl/D3DTextureSurfaceWGL.cpp',
@@ -653,6 +663,8 @@
         [
             'libANGLE/renderer/gl/egl/DisplayEGL.cpp',
             'libANGLE/renderer/gl/egl/DisplayEGL.h',
+            'libANGLE/renderer/gl/egl/egl_utils.cpp',
+            'libANGLE/renderer/gl/egl/egl_utils.h',
             'libANGLE/renderer/gl/egl/FunctionsEGL.cpp',
             'libANGLE/renderer/gl/egl/FunctionsEGL.h',
             'libANGLE/renderer/gl/egl/functionsegl_typedefs.h',
@@ -684,6 +696,8 @@
         [
             'libANGLE/renderer/gl/cgl/DisplayCGL.mm',
             'libANGLE/renderer/gl/cgl/DisplayCGL.h',
+            'libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.mm',
+            'libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.h',
             'libANGLE/renderer/gl/cgl/PbufferSurfaceCGL.mm',
             'libANGLE/renderer/gl/cgl/PbufferSurfaceCGL.h',
             'libANGLE/renderer/gl/cgl/WindowSurfaceCGL.mm',
@@ -812,13 +826,15 @@
             'libGLESv2/entry_points_gles_2_0_ext.h',
             'libGLESv2/entry_points_gles_3_0_autogen.cpp',
             'libGLESv2/entry_points_gles_3_0_autogen.h',
-            'libGLESv2/entry_points_gles_3_1.cpp',
-            'libGLESv2/entry_points_gles_3_1.h',
+            'libGLESv2/entry_points_gles_3_1_autogen.cpp',
+            'libGLESv2/entry_points_gles_3_1_autogen.h',
             'libGLESv2/global_state.cpp',
             'libGLESv2/global_state.h',
             'libGLESv2/libGLESv2.cpp',
             'libGLESv2/libGLESv2.def',
             'libGLESv2/libGLESv2.rc',
+            'libGLESv2/proc_table.h',
+            'libGLESv2/proc_table_autogen.cpp',
             'libGLESv2/resource.h',
         ],
         'libegl_sources':
@@ -903,11 +919,11 @@
                             'ANGLE_ENABLE_OPENGL',
                         ],
                     }],
-                    ['angle_enable_vulkan==1',
+                    ['angle_enable_gl_null==1',
                     {
                         'defines':
                         [
-                            'ANGLE_ENABLE_VULKAN',
+                            'ANGLE_ENABLE_OPENGL_NULL',
                         ],
                     }],
                     ['angle_enable_null==1',
@@ -949,6 +965,10 @@
             'defines':
             [
                 'LIBANGLE_IMPLEMENTATION',
+            ],
+            'msvs_disabled_warnings':
+            [
+                4577, # 'noexcept' used with no exception handling mode specified; termination on exception is not guaranteed.
             ],
             'export_dependent_settings':
             [
@@ -1064,6 +1084,13 @@
                     ],
                     'conditions':
                     [
+                        ['angle_enable_gl_null==1',
+                        {
+                            'sources':
+                            [
+                                '<@(libangle_gl_null_sources)',
+                            ],
+                        }],
                         ['OS=="win"',
                         {
                             'sources':
@@ -1152,38 +1179,6 @@
                                 },
                             }
                         }],
-                    ],
-                }],
-                ['angle_enable_vulkan==1',
-                {
-                    'sources':
-                    [
-                        '<@(libangle_vulkan_sources)',
-                    ],
-                    'conditions':
-                    [
-                        ['OS=="win"',
-                        {
-                            'sources':
-                            [
-                                '<@(libangle_vulkan_win32_sources)',
-                            ],
-                        }],
-                        ['OS=="linux"',
-                        {
-                            'sources':
-                            [
-                                '<@(libangle_vulkan_xcb_sources)',
-                            ],
-                        }],
-                    ],
-                    'dependencies':
-                    [
-                        'angle_vulkan',
-                    ],
-                    'export_dependent_settings':
-                    [
-                        'angle_vulkan',
                     ],
                 }],
                 ['angle_enable_null==1',

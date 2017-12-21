@@ -32,7 +32,8 @@ struct VertexAttribute;
 class VertexBinding;
 struct VertexAttribCurrentValueData;
 
-void QueryFramebufferAttachmentParameteriv(const Framebuffer *framebuffer,
+void QueryFramebufferAttachmentParameteriv(const Context *context,
+                                           const Framebuffer *framebuffer,
                                            GLenum attachment,
                                            GLenum pname,
                                            GLint *params);
@@ -113,6 +114,8 @@ void SetFramebufferParameteri(Framebuffer *framebuffer, GLenum pname, GLint para
 
 void SetProgramParameteri(Program *program, GLenum pname, GLint value);
 
+GLint GetUniformResourceProperty(const Program *program, GLuint index, const GLenum prop);
+
 GLuint QueryProgramResourceIndex(const Program *program,
                                  GLenum programInterface,
                                  const GLchar *name);
@@ -149,6 +152,8 @@ struct Config;
 class Surface;
 
 void QueryConfigAttrib(const Config *config, EGLint attribute, EGLint *value);
+
+void QueryContextAttrib(const gl::Context *context, EGLint attribute, EGLint *value);
 
 void QuerySurfaceAttrib(const Surface *surface, EGLint attribute, EGLint *value);
 void SetSurfaceAttrib(Surface *surface, EGLint attribute, EGLint value);

@@ -10,7 +10,6 @@
 #include "libANGLE/renderer/d3d/d3d11/InputLayoutCache.h"
 
 #include "common/bitset_utils.h"
-#include "common/third_party/murmurhash/MurmurHash3.h"
 #include "common/utilities.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/Program.h"
@@ -23,6 +22,7 @@
 #include "libANGLE/renderer/d3d/d3d11/Context11.h"
 #include "libANGLE/renderer/d3d/d3d11/Renderer11.h"
 #include "libANGLE/renderer/d3d/d3d11/ShaderExecutable11.h"
+#include "libANGLE/renderer/d3d/d3d11/VertexArray11.h"
 #include "libANGLE/renderer/d3d/d3d11/VertexBuffer11.h"
 #include "libANGLE/renderer/d3d/d3d11/formatutils11.h"
 
@@ -75,6 +75,8 @@ PackedAttributeLayout::PackedAttributeLayout() : numAttributes(0), flags(0), att
 {
 }
 
+PackedAttributeLayout::PackedAttributeLayout(const PackedAttributeLayout &other) = default;
+
 void PackedAttributeLayout::addAttributeData(GLenum glType,
                                              UINT semanticIndex,
                                              gl::VertexFormatType vertexFormatType,
@@ -125,7 +127,7 @@ gl::Error InputLayoutCache::applyVertexBuffers(
     const std::vector<const TranslatedAttribute *> &currentAttributes,
     GLenum mode,
     GLint start,
-    TranslatedIndexData *indexInfo)
+    bool isIndexedRendering)
 {
     Renderer11 *renderer   = GetImplAs<Context11>(context)->getRenderer();
     const gl::State &state = context->getGLState();
@@ -160,8 +162,11 @@ gl::Error InputLayoutCache::applyVertexBuffers(
                 ASSERT(attrib.vertexBuffer.get());
                 buffer = GetAs<VertexBuffer11>(attrib.vertexBuffer.get())->getBuffer().get();
             }
-            else if (instancedPointSpritesActive && (indexInfo != nullptr))
+            else if (instancedPointSpritesActive && isIndexedRendering)
             {
+                VertexArray11 *vao11 = GetImplAs<VertexArray11>(state.getVertexArray());
+                ASSERT(vao11->isCachedIndexInfoValid());
+                TranslatedIndexData *indexInfo = vao11->getCachedIndexInfo();
                 if (indexInfo->srcIndexData.srcBuffer != nullptr)
                 {
                     const uint8_t *bufferData = nullptr;
@@ -304,7 +309,7 @@ gl::Error InputLayoutCache::updateInputLayout(
     const std::vector<const TranslatedAttribute *> &currentAttributes,
     GLenum mode,
     const AttribIndexArray &sortedSemanticIndices,
-    GLsizei numIndicesPerInstance)
+    const DrawCallVertexParams &vertexParams)
 {
     gl::Program *program         = state.getProgram();
     const auto &shaderAttributes = program->getAttributes();
@@ -325,7 +330,7 @@ gl::Error InputLayoutCache::updateInputLayout(
         layout.flags |= PackedAttributeLayout::FLAG_INSTANCED_SPRITES_ACTIVE;
     }
 
-    if (numIndicesPerInstance > 0)
+    if (vertexParams.instances() > 0)
     {
         layout.flags |= PackedAttributeLayout::FLAG_INSTANCED_RENDERING_ACTIVE;
     }
@@ -367,7 +372,7 @@ gl::Error InputLayoutCache::updateInputLayout(
 
             d3d11::InputLayout newInputLayout;
             ANGLE_TRY(createInputLayout(renderer, sortedSemanticIndices, currentAttributes, mode,
-                                        program, numIndicesPerInstance, &newInputLayout));
+                                        program, vertexParams, &newInputLayout));
 
             auto insertIt = mLayoutCache.Put(layout, std::move(newInputLayout));
             inputLayout   = &insertIt->second;
@@ -384,7 +389,7 @@ gl::Error InputLayoutCache::createInputLayout(
     const std::vector<const TranslatedAttribute *> &currentAttributes,
     GLenum mode,
     gl::Program *program,
-    GLsizei numIndicesPerInstance,
+    const DrawCallVertexParams &vertexParams,
     d3d11::InputLayout *inputLayoutOut)
 {
     ProgramD3D *programD3D = GetImplAs<ProgramD3D>(program);
@@ -394,7 +399,7 @@ gl::Error InputLayoutCache::createInputLayout(
         programD3D->usesPointSize() && programD3D->usesInstancedPointSpriteEmulation();
 
     unsigned int inputElementCount = 0;
-    std::array<D3D11_INPUT_ELEMENT_DESC, gl::MAX_VERTEX_ATTRIBS> inputElements;
+    gl::AttribArray<D3D11_INPUT_ELEMENT_DESC> inputElements;
 
     for (size_t attribIndex = 0; attribIndex < currentAttributes.size(); ++attribIndex)
     {
@@ -433,6 +438,14 @@ gl::Error InputLayoutCache::createInputLayout(
         // doesn't support OpenGL ES 3.0.
         // As per the spec for ANGLE_instanced_arrays, not all attributes can be instanced
         // simultaneously, so a non-instanced element must exist.
+
+        GLsizei numIndicesPerInstance = 0;
+        if (vertexParams.instances() > 0)
+        {
+            // This may trigger an evaluation of the index range.
+            numIndicesPerInstance = vertexParams.vertexCount();
+        }
+
         for (size_t elementIndex = 0; elementIndex < inputElementCount; ++elementIndex)
         {
             // If rendering points and instanced pointsprite emulation is being used, the

@@ -17,8 +17,7 @@ UNIFIED_SOURCES += [
     '../common/MemoryBuffer.cpp',
     '../common/string_utils.cpp',
     '../common/system_utils_win.cpp',
-    '../common/third_party/base/anglebase/sha1.cc',
-    '../common/third_party/murmurhash/MurmurHash3.cpp',
+    '../common/third_party/smhasher/src/PMurHash.cpp',
     '../common/tls.cpp',
     '../common/uniform_type_info_autogen.cpp',
     '../common/utilities.cpp',
@@ -32,6 +31,7 @@ UNIFIED_SOURCES += [
     '../compiler/preprocessor/MacroExpander.cpp',
     '../compiler/preprocessor/Preprocessor.cpp',
     '../compiler/preprocessor/Token.cpp',
+    '../compiler/preprocessor/Tokenizer.cpp',
     '../compiler/translator/AddAndTrueToLoopCondition.cpp',
     '../compiler/translator/AddDefaultReturnStatements.cpp',
     '../compiler/translator/ArrayReturnValueToOutParameter.cpp',
@@ -42,13 +42,13 @@ UNIFIED_SOURCES += [
     '../compiler/translator/BuiltInFunctionEmulator.cpp',
     '../compiler/translator/BuiltInFunctionEmulatorGLSL.cpp',
     '../compiler/translator/BuiltInFunctionEmulatorHLSL.cpp',
-    '../compiler/translator/Cache.cpp',
     '../compiler/translator/CallDAG.cpp',
     '../compiler/translator/ClampPointSize.cpp',
     '../compiler/translator/CodeGen.cpp',
     '../compiler/translator/CollectVariables.cpp',
     '../compiler/translator/Compiler.cpp',
     '../compiler/translator/ConstantUnion.cpp',
+    '../compiler/translator/Declarator.cpp',
     '../compiler/translator/DeclareAndInitBuiltinsForInstancedMultiview.cpp',
     '../compiler/translator/DeferGlobalInitializers.cpp',
     '../compiler/translator/Diagnostics.cpp',
@@ -62,6 +62,7 @@ UNIFIED_SOURCES += [
     '../compiler/translator/FindSymbolNode.cpp',
     '../compiler/translator/FlagStd140Structs.cpp',
     '../compiler/translator/HashNames.cpp',
+    '../compiler/translator/ImageFunctionHLSL.cpp',
     '../compiler/translator/InfoSink.cpp',
     '../compiler/translator/Initialize.cpp',
     '../compiler/translator/InitializeDll.cpp',
@@ -79,16 +80,18 @@ UNIFIED_SOURCES += [
     '../compiler/translator/OutputTree.cpp',
     '../compiler/translator/ParseContext.cpp',
     '../compiler/translator/PoolAlloc.cpp',
-    '../compiler/translator/PruneEmptyDeclarations.cpp',
-    '../compiler/translator/PrunePureLiteralStatements.cpp',
+    '../compiler/translator/PruneNoOps.cpp',
     '../compiler/translator/QualifierTypes.cpp',
     '../compiler/translator/RecordConstantPrecision.cpp',
     '../compiler/translator/RegenerateStructNames.cpp',
     '../compiler/translator/RemoveArrayLengthMethod.cpp',
     '../compiler/translator/RemoveDynamicIndexing.cpp',
+    '../compiler/translator/RemoveEmptySwitchStatements.cpp',
     '../compiler/translator/RemoveInvariantDeclaration.cpp',
+    '../compiler/translator/RemoveNoOpCasesFromEndOfSwitchStatements.cpp',
     '../compiler/translator/RemovePow.cpp',
     '../compiler/translator/RemoveSwitchFallThrough.cpp',
+    '../compiler/translator/RemoveUnreferencedVariables.cpp',
     '../compiler/translator/RewriteDoWhile.cpp',
     '../compiler/translator/RewriteElseBlocks.cpp',
     '../compiler/translator/RewriteUnaryMinusOperatorFloat.cpp',
@@ -101,8 +104,11 @@ UNIFIED_SOURCES += [
     '../compiler/translator/ShaderVars.cpp',
     '../compiler/translator/SimplifyLoopConditions.cpp',
     '../compiler/translator/SplitSequenceOperator.cpp',
+    '../compiler/translator/StaticType.cpp',
     '../compiler/translator/StructureHLSL.cpp',
+    '../compiler/translator/Symbol.cpp',
     '../compiler/translator/SymbolTable.cpp',
+    '../compiler/translator/SymbolUniqueId.cpp',
     '../compiler/translator/TextureFunctionHLSL.cpp',
     '../compiler/translator/TranslatorESSL.cpp',
     '../compiler/translator/TranslatorGLSL.cpp',
@@ -117,12 +123,14 @@ UNIFIED_SOURCES += [
     '../compiler/translator/ValidateGlobalInitializer.cpp',
     '../compiler/translator/ValidateLimitations.cpp',
     '../compiler/translator/ValidateMaxParameters.cpp',
+    '../compiler/translator/ValidateOutputs.cpp',
     '../compiler/translator/ValidateSwitch.cpp',
     '../compiler/translator/ValidateVaryingLocations.cpp',
     '../compiler/translator/VariablePacker.cpp',
+    '../compiler/translator/VectorizeVectorScalarArithmetic.cpp',
     '../compiler/translator/VersionGLSL.cpp',
+    '../compiler/translator/WrapSwitchStatementsInBlocks.cpp',
     '../third_party/compiler/ArrayBoundsClamper.cpp',
-    '../third_party/systeminfo/SystemInfo.cpp',
     'angletypes.cpp',
     'AttributeMap.cpp',
     'Buffer.cpp',
@@ -147,10 +155,12 @@ UNIFIED_SOURCES += [
     'IndexRangeCache.cpp',
     'LoggingAnnotator.cpp',
     'MemoryProgramCache.cpp',
+    'PackedGLEnums_autogen.cpp',
     'params.cpp',
     'Path.cpp',
     'Platform.cpp',
     'Program.cpp',
+    'ProgramLinkedResources.cpp',
     'ProgramPipeline.cpp',
     'Query.cpp',
     'queryconversions.cpp',
@@ -207,10 +217,12 @@ UNIFIED_SOURCES += [
     'renderer/gl/ClearMultiviewGL.cpp',
     'renderer/gl/CompilerGL.cpp',
     'renderer/gl/ContextGL.cpp',
+    'renderer/gl/DispatchTableGL_autogen.cpp',
     'renderer/gl/DisplayGL.cpp',
     'renderer/gl/FenceNVGL.cpp',
     'renderer/gl/formatutilsgl.cpp',
     'renderer/gl/FunctionsGL.cpp',
+    'renderer/gl/null_functions.cpp',
     'renderer/gl/PathGL.cpp',
     'renderer/gl/ProgramGL.cpp',
     'renderer/gl/ProgramPipelineGL.cpp',
@@ -267,7 +279,6 @@ UNIFIED_SOURCES += [
     'Thread.cpp',
     'TransformFeedback.cpp',
     'Uniform.cpp',
-    'UniformLinker.cpp',
     'validationEGL.cpp',
     'validationES.cpp',
     'validationES2.cpp',
@@ -279,20 +290,19 @@ UNIFIED_SOURCES += [
     'WorkerThread.cpp',
 ]
 SOURCES += [
-    '../compiler/preprocessor/Tokenizer.cpp',
     '../compiler/translator/EmulateGLFragColorBroadcast.cpp',
     '../compiler/translator/glslang_lex.cpp',
     '../compiler/translator/glslang_tab.cpp',
     '../compiler/translator/RewriteTexelFetchOffset.cpp',
     '../compiler/translator/RewriteUnaryMinusOperatorInt.cpp',
     '../compiler/translator/ShaderLang.cpp',
-    '../compiler/translator/ValidateOutputs.cpp',
     '../gpu_info_util/SystemInfo.cpp',
     '../gpu_info_util/SystemInfo_win.cpp',
     '../image_util/copyimage.cpp',
     '../image_util/imageformats.cpp',
     '../image_util/loadimage.cpp',
     '../image_util/loadimage_etc.cpp',
+    '../third_party/systeminfo/SystemInfo.cpp',
     'Display.cpp',
     'renderer/d3d/DisplayD3D.cpp',
     'renderer/d3d/HLSLCompiler.cpp',
@@ -323,7 +333,7 @@ if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
         'renderer/d3d/d3d11/ResourceManager11.cpp',
         'renderer/d3d/d3d11/ShaderExecutable11.cpp',
         'renderer/d3d/d3d11/StateManager11.cpp',
-        'renderer/d3d/d3d11/StreamProducerNV12.cpp',
+        'renderer/d3d/d3d11/StreamProducerD3DTexture.cpp',
         'renderer/d3d/d3d11/texture_format_table.cpp',
         'renderer/d3d/d3d11/texture_format_table_autogen.cpp',
         'renderer/d3d/d3d11/TextureStorage11.cpp',
@@ -331,16 +341,15 @@ if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
         'renderer/d3d/d3d11/Trim11.cpp',
         'renderer/d3d/d3d11/VertexArray11.cpp',
         'renderer/d3d/d3d11/VertexBuffer11.cpp',
+        'renderer/d3d/d3d11/win32/NativeWindow11Win32.cpp',
     ]
 if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
     SOURCES += [
         'renderer/d3d/d3d11/SwapChain11.cpp',
-        'renderer/d3d/d3d11/win32/NativeWindow11Win32.cpp',
     ]
 
-CXXFLAGS += CONFIG['SSE2_FLAGS']
 
-if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
+if CONFIG['GNU_CXX']:
     CXXFLAGS += [
         '-Wno-attributes',
         '-Wno-shadow',
@@ -348,7 +357,7 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         '-Wno-unknown-pragmas',
         '-Wno-unreachable-code',
     ]
-    if CONFIG['CC_TYPE'] == 'clang':
+    if CONFIG['CLANG_CXX']:
         CXXFLAGS += [
             '-Wno-inconsistent-missing-override',
             '-Wno-unused-private-field',
@@ -358,13 +367,6 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
             '-Wno-shadow-compatible-local',
             '-Wno-shadow-local',
         ]
-
-if CONFIG['CC_TYPE'] == 'msvc':
-    CXXFLAGS += [
-        '-wd4018', # '>' : signed/unsigned mismatch
-        '-wd4530', # C++ exception handler used, without /EHsc
-        '-wd5038', # C5038: initializer list order warnings
-    ]
 
 if CONFIG['MOZ_DIRECTX_SDK_PATH'] and not CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
     LOCAL_INCLUDES += ['%' + '%s/include/' % CONFIG['MOZ_DIRECTX_SDK_PATH']]
@@ -390,7 +392,7 @@ DEFINES['EGLAPI'] = ""
 
 
 
-LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/base', '../../src/third_party/khronos', ]
+LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/numerics', '../../src/third_party/khronos', '../../src/third_party/mrucache' ]
 
 DEFINES['LIBANGLE_IMPLEMENTATION'] = "1"
 DEFINES['ANGLE_ENABLE_HLSL'] = "1"
@@ -418,5 +420,5 @@ if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
     SOURCES['renderer/d3d/d3d11/SwapChain11.cpp'].flags += ['-DANGLE_RESOURCE_SHARE_TYPE=D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX']
 
 # We allow warnings for third-party code that can be updated from upstream.
-AllowCompilerWarnings()
+ALLOW_COMPILER_WARNINGS = True
 

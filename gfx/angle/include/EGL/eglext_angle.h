@@ -12,10 +12,10 @@
 
 // clang-format off
 
-#ifndef EGL_ANGLE_display_robust_resource_initialization
-#define EGL_ANGLE_display_robust_resource_initialization 1
-#define EGL_DISPLAY_ROBUST_RESOURCE_INITIALIZATION_ANGLE 0x3453
-#endif /* EGL_ANGLE_display_robust_resource_initialization */
+#ifndef EGL_ANGLE_robust_resource_initialization
+#define EGL_ANGLE_robust_resource_initialization 1
+#define EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE 0x3453
+#endif /* EGL_ANGLE_robust_resource_initialization */
 
 #ifndef EGL_ANGLE_keyed_mutex
 #define EGL_ANGLE_keyed_mutex 1
@@ -105,16 +105,16 @@
 #define EGL_EXPERIMENTAL_PRESENT_PATH_COPY_ANGLE 0x33AA
 #endif /* EGL_ANGLE_experimental_present_path */
 
-#ifndef EGL_ANGLE_stream_producer_d3d_texture_nv12
-#define EGL_ANGLE_stream_producer_d3d_texture_nv12
+#ifndef EGL_ANGLE_stream_producer_d3d_texture
+#define EGL_ANGLE_stream_producer_d3d_texture
 #define EGL_D3D_TEXTURE_SUBRESOURCE_ID_ANGLE 0x33AB
-typedef EGLBoolean(EGLAPIENTRYP PFNEGLCREATESTREAMPRODUCERD3DTEXTURENV12ANGLEPROC)(EGLDisplay dpy, EGLStreamKHR stream, const EGLAttrib *attrib_list);
-typedef EGLBoolean(EGLAPIENTRYP PFNEGLSTREAMPOSTD3DTEXTURENV12ANGLEPROC)(EGLDisplay dpy, EGLStreamKHR stream, void *texture, const EGLAttrib *attrib_list);
+typedef EGLBoolean(EGLAPIENTRYP PFNEGLCREATESTREAMPRODUCERD3DTEXTUREANGLEPROC)(EGLDisplay dpy, EGLStreamKHR stream, const EGLAttrib *attrib_list);
+typedef EGLBoolean(EGLAPIENTRYP PFNEGLSTREAMPOSTD3DTEXTUREANGLEPROC)(EGLDisplay dpy, EGLStreamKHR stream, void *texture, const EGLAttrib *attrib_list);
 #ifdef EGL_EGLEXT_PROTOTYPES
-EGLAPI EGLBoolean EGLAPIENTRY eglCreateStreamProducerD3DTextureNV12ANGLE(EGLDisplay dpy, EGLStreamKHR stream, const EGLAttrib *attrib_list);
-EGLAPI EGLBoolean EGLAPIENTRY eglStreamPostD3DTextureNV12ANGLE(EGLDisplay dpy, EGLStreamKHR stream, void *texture, const EGLAttrib *attrib_list);
+EGLAPI EGLBoolean EGLAPIENTRY eglCreateStreamProducerD3DTextureANGLE(EGLDisplay dpy, EGLStreamKHR stream, const EGLAttrib *attrib_list);
+EGLAPI EGLBoolean EGLAPIENTRY eglStreamPostD3DTextureANGLE(EGLDisplay dpy, EGLStreamKHR stream, void *texture, const EGLAttrib *attrib_list);
 #endif
-#endif /* EGL_ANGLE_stream_producer_d3d_texture_nv12 */
+#endif /* EGL_ANGLE_stream_producer_d3d_texture */
 
 #ifndef EGL_ANGLE_create_context_webgl_compatibility
 #define EGL_ANGLE_create_context_webgl_compatibility 1
@@ -164,6 +164,15 @@ EGLAPI void EGLAPIENTRY eglProgramCachePopulateANGLE(EGLDisplay dpy, const void 
 EGLAPI EGLint EGLAPIENTRY eglProgramCacheResizeANGLE(EGLDisplay dpy, EGLint limit, EGLenum mode);
 #endif
 #endif /* EGL_ANGLE_program_cache_control */
+
+#ifndef EGL_ANGLE_iosurface_client_buffer
+#define EGL_ANGLE_iosurface_client_buffer 1
+#define EGL_IOSURFACE_ANGLE 0x3454
+#define EGL_IOSURFACE_PLANE_ANGLE 0x345A
+#define EGL_TEXTURE_RECTANGLE_ANGLE 0x345B
+#define EGL_TEXTURE_TYPE_ANGLE 0x345C
+#define EGL_TEXTURE_INTERNAL_FORMAT_ANGLE 0x345D
+#endif /* EGL_ANGLE_iosurface_client_buffer */
 
 // clang-format on
 

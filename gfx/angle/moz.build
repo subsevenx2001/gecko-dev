@@ -15,7 +15,7 @@ UNIFIED_SOURCES += [
     'src/common/mathutil.cpp',
     'src/common/MemoryBuffer.cpp',
     'src/common/string_utils.cpp',
-    'src/common/third_party/base/anglebase/sha1.cc',
+    'src/common/third_party/smhasher/src/PMurHash.cpp',
     'src/common/tls.cpp',
     'src/common/uniform_type_info_autogen.cpp',
     'src/common/utilities.cpp',
@@ -29,6 +29,7 @@ UNIFIED_SOURCES += [
     'src/compiler/preprocessor/MacroExpander.cpp',
     'src/compiler/preprocessor/Preprocessor.cpp',
     'src/compiler/preprocessor/Token.cpp',
+    'src/compiler/preprocessor/Tokenizer.cpp',
     'src/compiler/translator/AddAndTrueToLoopCondition.cpp',
     'src/compiler/translator/AddDefaultReturnStatements.cpp',
     'src/compiler/translator/ArrayReturnValueToOutParameter.cpp',
@@ -39,13 +40,13 @@ UNIFIED_SOURCES += [
     'src/compiler/translator/BuiltInFunctionEmulator.cpp',
     'src/compiler/translator/BuiltInFunctionEmulatorGLSL.cpp',
     'src/compiler/translator/BuiltInFunctionEmulatorHLSL.cpp',
-    'src/compiler/translator/Cache.cpp',
     'src/compiler/translator/CallDAG.cpp',
     'src/compiler/translator/ClampPointSize.cpp',
     'src/compiler/translator/CodeGen.cpp',
     'src/compiler/translator/CollectVariables.cpp',
     'src/compiler/translator/Compiler.cpp',
     'src/compiler/translator/ConstantUnion.cpp',
+    'src/compiler/translator/Declarator.cpp',
     'src/compiler/translator/DeclareAndInitBuiltinsForInstancedMultiview.cpp',
     'src/compiler/translator/DeferGlobalInitializers.cpp',
     'src/compiler/translator/Diagnostics.cpp',
@@ -59,6 +60,7 @@ UNIFIED_SOURCES += [
     'src/compiler/translator/FindSymbolNode.cpp',
     'src/compiler/translator/FlagStd140Structs.cpp',
     'src/compiler/translator/HashNames.cpp',
+    'src/compiler/translator/ImageFunctionHLSL.cpp',
     'src/compiler/translator/InfoSink.cpp',
     'src/compiler/translator/Initialize.cpp',
     'src/compiler/translator/InitializeDll.cpp',
@@ -76,16 +78,18 @@ UNIFIED_SOURCES += [
     'src/compiler/translator/OutputTree.cpp',
     'src/compiler/translator/ParseContext.cpp',
     'src/compiler/translator/PoolAlloc.cpp',
-    'src/compiler/translator/PruneEmptyDeclarations.cpp',
-    'src/compiler/translator/PrunePureLiteralStatements.cpp',
+    'src/compiler/translator/PruneNoOps.cpp',
     'src/compiler/translator/QualifierTypes.cpp',
     'src/compiler/translator/RecordConstantPrecision.cpp',
     'src/compiler/translator/RegenerateStructNames.cpp',
     'src/compiler/translator/RemoveArrayLengthMethod.cpp',
     'src/compiler/translator/RemoveDynamicIndexing.cpp',
+    'src/compiler/translator/RemoveEmptySwitchStatements.cpp',
     'src/compiler/translator/RemoveInvariantDeclaration.cpp',
+    'src/compiler/translator/RemoveNoOpCasesFromEndOfSwitchStatements.cpp',
     'src/compiler/translator/RemovePow.cpp',
     'src/compiler/translator/RemoveSwitchFallThrough.cpp',
+    'src/compiler/translator/RemoveUnreferencedVariables.cpp',
     'src/compiler/translator/RewriteDoWhile.cpp',
     'src/compiler/translator/RewriteElseBlocks.cpp',
     'src/compiler/translator/RewriteUnaryMinusOperatorFloat.cpp',
@@ -98,8 +102,11 @@ UNIFIED_SOURCES += [
     'src/compiler/translator/ShaderVars.cpp',
     'src/compiler/translator/SimplifyLoopConditions.cpp',
     'src/compiler/translator/SplitSequenceOperator.cpp',
+    'src/compiler/translator/StaticType.cpp',
     'src/compiler/translator/StructureHLSL.cpp',
+    'src/compiler/translator/Symbol.cpp',
     'src/compiler/translator/SymbolTable.cpp',
+    'src/compiler/translator/SymbolUniqueId.cpp',
     'src/compiler/translator/TextureFunctionHLSL.cpp',
     'src/compiler/translator/TranslatorESSL.cpp',
     'src/compiler/translator/TranslatorGLSL.cpp',
@@ -114,21 +121,22 @@ UNIFIED_SOURCES += [
     'src/compiler/translator/ValidateGlobalInitializer.cpp',
     'src/compiler/translator/ValidateLimitations.cpp',
     'src/compiler/translator/ValidateMaxParameters.cpp',
+    'src/compiler/translator/ValidateOutputs.cpp',
     'src/compiler/translator/ValidateSwitch.cpp',
     'src/compiler/translator/ValidateVaryingLocations.cpp',
     'src/compiler/translator/VariablePacker.cpp',
+    'src/compiler/translator/VectorizeVectorScalarArithmetic.cpp',
     'src/compiler/translator/VersionGLSL.cpp',
+    'src/compiler/translator/WrapSwitchStatementsInBlocks.cpp',
     'src/third_party/compiler/ArrayBoundsClamper.cpp',
 ]
 SOURCES += [
-    'src/compiler/preprocessor/Tokenizer.cpp',
     'src/compiler/translator/EmulateGLFragColorBroadcast.cpp',
     'src/compiler/translator/glslang_lex.cpp',
     'src/compiler/translator/glslang_tab.cpp',
     'src/compiler/translator/RewriteTexelFetchOffset.cpp',
     'src/compiler/translator/RewriteUnaryMinusOperatorInt.cpp',
     'src/compiler/translator/ShaderLang.cpp',
-    'src/compiler/translator/ValidateOutputs.cpp',
 ]
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     UNIFIED_SOURCES += [
@@ -140,7 +148,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     ]
 
 
-if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
+if CONFIG['GNU_CXX']:
     CXXFLAGS += [
         '-Wno-attributes',
         '-Wno-shadow',
@@ -148,9 +156,8 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         '-Wno-unknown-pragmas',
         '-Wno-unreachable-code',
     ]
-    if CONFIG['CC_TYPE'] == 'clang':
+    if CONFIG['CLANG_CXX']:
         CXXFLAGS += [
-            '-Wno-implicit-fallthrough',
             '-Wno-inconsistent-missing-override',
             '-Wno-unused-private-field',
         ]
@@ -159,9 +166,6 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
             '-Wno-shadow-compatible-local',
             '-Wno-shadow-local',
         ]
-
-if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
-    CXXFLAGS += ['-wd5038'] # C5038: initializer list order warnings
 
 if CONFIG['MOZ_DIRECTX_SDK_PATH'] and not CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
     LOCAL_INCLUDES += ['%' + '%s/include/' % CONFIG['MOZ_DIRECTX_SDK_PATH']]
@@ -198,9 +202,9 @@ DEFINES['ANGLE_ENABLE_KEYEDMUTEX'] = "1"
 EXPORTS.angle += [ 'include/GLSLANG/ShaderLang.h', 'include/GLSLANG/ShaderVars.h', 'include/platform/Platform.h' ]
 EXPORTS.angle.KHR += [ 'include/KHR/khrplatform.h' ]
 
-LOCAL_INCLUDES += [ 'include', 'src', 'src/common/third_party/base']
+LOCAL_INCLUDES += [ 'include', 'src', 'src/common/third_party/numerics' ]
 
 # We allow warnings for third-party code that can be updated from upstream.
-AllowCompilerWarnings()
+ALLOW_COMPILER_WARNINGS = True
 
 FINAL_LIBRARY = 'gkmedias'

@@ -149,6 +149,10 @@ class RendererGL : angle::NonCopyable
     void pushGroupMarker(GLsizei length, const char *marker);
     void popGroupMarker();
 
+    // KHR_debug
+    void pushDebugGroup(GLenum source, GLuint id, GLsizei length, const char *message);
+    void popDebugGroup();
+
     std::string getVendorString() const;
     std::string getRendererDescription() const;
 
@@ -173,6 +177,8 @@ class RendererGL : angle::NonCopyable
                               GLuint numGroupsX,
                               GLuint numGroupsY,
                               GLuint numGroupsZ);
+    gl::Error memoryBarrier(GLbitfield barriers);
+    gl::Error memoryBarrierByRegion(GLbitfield barriers);
 
   private:
     void ensureCapsInitialized() const;
@@ -192,9 +198,6 @@ class RendererGL : angle::NonCopyable
     WorkaroundsGL mWorkarounds;
 
     bool mUseDebugOutput;
-
-    // For performance debugging
-    bool mSkipDrawCalls;
 
     mutable bool mCapsInitialized;
     mutable gl::Caps mNativeCaps;

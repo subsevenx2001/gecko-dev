@@ -160,23 +160,11 @@ inline const char* MakeStaticString(const std::string &str)
     return strings.insert(str).first->c_str();
 }
 
-inline std::string ArrayString(unsigned int i)
-{
-    // We assume UINT_MAX and GL_INVALID_INDEX are equal
-    // See DynamicHLSL.cpp
-    if (i == UINT_MAX)
-    {
-        return "";
-    }
+std::string ArrayString(unsigned int i);
 
-    std::stringstream strstr;
-
-    strstr << "[";
-    strstr << i;
-    strstr << "]";
-
-    return strstr.str();
-}
+// Indices are stored in vectors with the outermost index in the back. In the output of the function
+// the indices are reversed.
+std::string ArrayIndexString(const std::vector<unsigned int> &indices);
 
 inline std::string Str(int i)
 {
@@ -208,6 +196,8 @@ std::string ToString(const T &value)
 #define GL_BGRA4_ANGLEX 0x6ABC
 #define GL_BGR5_A1_ANGLEX 0x6ABD
 #define GL_INT_64_ANGLEX 0x6ABE
+#define GL_UINT_64_ANGLEX 0x6ABF
+#define GL_BGRA8_SRGB_ANGLEX 0x6AC0
 
 // Hidden enum for the NULL D3D device type.
 #define EGL_PLATFORM_ANGLE_DEVICE_TYPE_NULL_ANGLE 0x6AC0

@@ -89,7 +89,7 @@ std::array<angle::Vector3, 4> GetIndexedQuadVertices()
     return vertices;
 }
 
-static constexpr GLushort IndexedQuadIndices[6] = {0, 1, 2, 0, 2, 3};
+static constexpr std::array<GLushort, 6> IndexedQuadIndices = {{0, 1, 2, 0, 2, 3}};
 
 }  // anonymous namespace
 
@@ -125,6 +125,18 @@ GLColor::GLColor(const angle::Vector4 &floatColor)
 GLColor::GLColor(GLuint colorValue) : R(0), G(0), B(0), A(0)
 {
     memcpy(&R, &colorValue, sizeof(GLuint));
+}
+
+testing::AssertionResult GLColor::ExpectNear(const GLColor &expected, const GLColor &err) const
+{
+    testing::AssertionResult result(
+        abs(int(expected.R) - this->R) <= err.R && abs(int(expected.G) - this->G) <= err.G &&
+        abs(int(expected.B) - this->B) <= err.B && abs(int(expected.A) - this->A) <= err.A);
+    if (!bool(result))
+    {
+        result << "Expected " << expected << "+/-" << err << ", was " << *this;
+    }
+    return result;
 }
 
 angle::Vector4 GLColor::toNormalizedVector() const
@@ -190,6 +202,12 @@ std::array<angle::Vector3, 6> ANGLETestBase::GetQuadVertices()
     vertices[4] = angle::Vector3(1.0f, -1.0f, 0.5f);
     vertices[5] = angle::Vector3(1.0f, 1.0f, 0.5f);
     return vertices;
+}
+
+// static
+std::array<GLushort, 6> ANGLETestBase::GetQuadIndices()
+{
+    return angle::IndexedQuadIndices;
 }
 
 ANGLETestBase::ANGLETestBase(const angle::PlatformParameters &params)
@@ -383,7 +401,7 @@ void ANGLETestBase::setupIndexedQuadIndexBuffer()
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mQuadIndexBuffer);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(angle::IndexedQuadIndices),
-                 angle::IndexedQuadIndices, GL_STATIC_DRAW);
+                 angle::IndexedQuadIndices.data(), GL_STATIC_DRAW);
 }
 
 // static
@@ -552,7 +570,7 @@ void ANGLETestBase::drawIndexedQuad(GLuint program,
     }
     else
     {
-        indices = angle::IndexedQuadIndices;
+        indices = angle::IndexedQuadIndices.data();
     }
 
     if (!restrictedRange)

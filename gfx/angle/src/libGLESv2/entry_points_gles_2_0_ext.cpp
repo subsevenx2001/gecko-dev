@@ -12,6 +12,7 @@
 #include "libANGLE/Buffer.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/Error.h"
+#include "libANGLE/ErrorStrings.h"
 #include "libANGLE/Fence.h"
 #include "libANGLE/Framebuffer.h"
 #include "libANGLE/Query.h"
@@ -665,6 +666,12 @@ void GL_APIENTRY VertexAttribDivisorANGLE(GLuint index, GLuint divisor)
     Context *context = GetValidGlobalContext();
     if (context)
     {
+        if (!context->getExtensions().instancedArrays)
+        {
+            ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+            return;
+        }
+
         if (index >= MAX_VERTEX_ATTRIBS)
         {
             context->handleError(InvalidValue());
@@ -835,13 +842,15 @@ void GL_APIENTRY GetBufferPointervOES(GLenum target, GLenum pname, void **params
     Context *context = GetValidGlobalContext();
     if (context)
     {
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
         if (!context->skipValidation() &&
-            !ValidateGetBufferPointervOES(context, target, pname, params))
+            !ValidateGetBufferPointervOES(context, targetPacked, pname, params))
         {
             return;
         }
 
-        context->getBufferPointerv(target, pname, params);
+        context->getBufferPointerv(targetPacked, pname, params);
     }
 }
 
@@ -852,12 +861,14 @@ void *GL_APIENTRY MapBufferOES(GLenum target, GLenum access)
     Context *context = GetValidGlobalContext();
     if (context)
     {
-        if (!context->skipValidation() && !ValidateMapBufferOES(context, target, access))
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
+        if (!context->skipValidation() && !ValidateMapBufferOES(context, targetPacked, access))
         {
             return nullptr;
         }
 
-        return context->mapBuffer(target, access);
+        return context->mapBuffer(targetPacked, access);
     }
 
     return nullptr;
@@ -870,12 +881,14 @@ GLboolean GL_APIENTRY UnmapBufferOES(GLenum target)
     Context *context = GetValidGlobalContext();
     if (context)
     {
-        if (!context->skipValidation() && !ValidateUnmapBufferOES(context, target))
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
+        if (!context->skipValidation() && !ValidateUnmapBufferOES(context, targetPacked))
         {
             return GL_FALSE;
         }
 
-        return context->unmapBuffer(target);
+        return context->unmapBuffer(targetPacked);
     }
 
     return GL_FALSE;
@@ -894,13 +907,15 @@ void *GL_APIENTRY MapBufferRangeEXT(GLenum target,
     Context *context = GetValidGlobalContext();
     if (context)
     {
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
         if (!context->skipValidation() &&
-            !ValidateMapBufferRangeEXT(context, target, offset, length, access))
+            !ValidateMapBufferRangeEXT(context, targetPacked, offset, length, access))
         {
             return nullptr;
         }
 
-        return context->mapBufferRange(target, offset, length, access);
+        return context->mapBufferRange(targetPacked, offset, length, access);
     }
 
     return nullptr;
@@ -914,13 +929,15 @@ void GL_APIENTRY FlushMappedBufferRangeEXT(GLenum target, GLintptr offset, GLsiz
     Context *context = GetValidGlobalContext();
     if (context)
     {
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
         if (!context->skipValidation() &&
-            !ValidateFlushMappedBufferRangeEXT(context, target, offset, length))
+            !ValidateFlushMappedBufferRangeEXT(context, targetPacked, offset, length))
         {
             return;
         }
 
-        context->flushMappedBufferRange(target, offset, length);
+        context->flushMappedBufferRange(targetPacked, offset, length);
     }
 }
 
@@ -2011,14 +2028,16 @@ ANGLE_EXPORT void GL_APIENTRY GetBufferParameterivRobustANGLE(GLenum target,
     Context *context = GetValidGlobalContext();
     if (context)
     {
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
         GLsizei numParams = 0;
-        if (!ValidateGetBufferParameterivRobustANGLE(context, target, pname, bufSize, &numParams,
-                                                     params))
+        if (!ValidateGetBufferParameterivRobustANGLE(context, targetPacked, pname, bufSize,
+                                                     &numParams, params))
         {
             return;
         }
 
-        Buffer *buffer = context->getGLState().getTargetBuffer(target);
+        Buffer *buffer = context->getGLState().getTargetBuffer(targetPacked);
         QueryBufferParameteriv(buffer, pname, params);
         SetRobustLengthParam(length, numParams);
     }
@@ -2072,7 +2091,7 @@ ANGLE_EXPORT void GL_APIENTRY GetFramebufferAttachmentParameterivRobustANGLE(GLe
         }
 
         const Framebuffer *framebuffer = context->getGLState().getTargetFramebuffer(target);
-        QueryFramebufferAttachmentParameteriv(framebuffer, attachment, pname, params);
+        QueryFramebufferAttachmentParameteriv(context, framebuffer, attachment, pname, params);
         SetRobustLengthParam(length, numParams);
     }
 }
@@ -2776,14 +2795,16 @@ ANGLE_EXPORT void GL_APIENTRY GetBufferPointervRobustANGLE(GLenum target,
     Context *context = GetValidGlobalContext();
     if (context)
     {
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
         GLsizei numParams = 0;
-        if (!ValidateGetBufferPointervRobustANGLE(context, target, pname, bufSize, &numParams,
+        if (!ValidateGetBufferPointervRobustANGLE(context, targetPacked, pname, bufSize, &numParams,
                                                   params))
         {
             return;
         }
 
-        context->getBufferPointerv(target, pname, params);
+        context->getBufferPointerv(targetPacked, pname, params);
         SetRobustLengthParam(length, numParams);
     }
 }
@@ -3016,14 +3037,16 @@ ANGLE_EXPORT void GL_APIENTRY GetBufferParameteri64vRobustANGLE(GLenum target,
     Context *context = GetValidGlobalContext();
     if (context)
     {
+        BufferBinding targetPacked = FromGLenum<BufferBinding>(target);
+
         GLsizei numParams = 0;
-        if (!ValidateGetBufferParameteri64vRobustANGLE(context, target, pname, bufSize, &numParams,
-                                                       params))
+        if (!ValidateGetBufferParameteri64vRobustANGLE(context, targetPacked, pname, bufSize,
+                                                       &numParams, params))
         {
             return;
         }
 
-        Buffer *buffer = context->getGLState().getTargetBuffer(target);
+        Buffer *buffer = context->getGLState().getTargetBuffer(targetPacked);
         QueryBufferParameteri64v(buffer, pname, params);
         SetRobustLengthParam(length, numParams);
     }

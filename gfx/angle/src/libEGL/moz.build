@@ -13,7 +13,7 @@ UNIFIED_SOURCES += [
 ]
 
 
-if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
+if CONFIG['GNU_CXX']:
     CXXFLAGS += [
         '-Wno-attributes',
         '-Wno-shadow',
@@ -21,7 +21,7 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         '-Wno-unknown-pragmas',
         '-Wno-unreachable-code',
     ]
-    if CONFIG['CC_TYPE'] == 'clang':
+    if CONFIG['CLANG_CXX']:
         CXXFLAGS += [
             '-Wno-inconsistent-missing-override',
             '-Wno-unused-private-field',
@@ -56,7 +56,7 @@ DEFINES['EGLAPI'] = ""
 
 
 
-LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/base', '../../src/third_party/khronos' ]
+LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/third_party/khronos' ]
 USE_LIBS += [ 'libGLESv2' ]
 
 DEFINES['LIBANGLE_IMPLEMENTATION'] = "1"

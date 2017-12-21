@@ -45,7 +45,7 @@ RasterizerState::RasterizerState()
 
     rasterizerDiscard   = false;
     cullFace            = false;
-    cullMode            = GL_BACK;
+    cullMode            = CullFaceMode::Back;
     frontFace           = GL_CCW;
     polygonOffsetFill   = false;
     polygonOffsetFactor = 0.0f;
@@ -77,6 +77,11 @@ BlendState::BlendState()
     blendEquationAlpha    = GL_FUNC_ADD;
     sampleAlphaToCoverage = false;
     dither                = true;
+}
+
+BlendState::BlendState(const BlendState &other)
+{
+    memcpy(this, &other, sizeof(BlendState));
 }
 
 bool operator==(const BlendState &a, const BlendState &b)
@@ -111,6 +116,11 @@ DepthStencilState::DepthStencilState()
     stencilBackPassDepthPass = GL_KEEP;
 }
 
+DepthStencilState::DepthStencilState(const DepthStencilState &other)
+{
+    memcpy(this, &other, sizeof(DepthStencilState));
+}
+
 bool operator==(const DepthStencilState &a, const DepthStencilState &b)
 {
     return memcmp(&a, &b, sizeof(DepthStencilState)) == 0;
@@ -138,14 +148,16 @@ SamplerState::SamplerState()
     sRGBDecode    = GL_DECODE_EXT;
 }
 
+SamplerState::SamplerState(const SamplerState &other) = default;
+
 // static
 SamplerState SamplerState::CreateDefaultForTarget(GLenum target)
 {
     SamplerState state;
 
-    // According to OES_EGL_image_external: For external textures, the default min filter is
-    // GL_LINEAR and the default s and t wrap modes are GL_CLAMP_TO_EDGE.
-    if (target == GL_TEXTURE_EXTERNAL_OES)
+    // According to OES_EGL_image_external and ARB_texture_rectangle: For external textures, the
+    // default min filter is GL_LINEAR and the default s and t wrap modes are GL_CLAMP_TO_EDGE.
+    if (target == GL_TEXTURE_EXTERNAL_OES || target == GL_TEXTURE_RECTANGLE_ANGLE)
     {
         state.minFilter = GL_LINEAR;
         state.wrapS     = GL_CLAMP_TO_EDGE;
@@ -154,6 +166,15 @@ SamplerState SamplerState::CreateDefaultForTarget(GLenum target)
 
     return state;
 }
+
+ImageUnit::ImageUnit()
+    : texture(), level(0), layered(false), layer(0), access(GL_READ_ONLY), format(GL_R32UI)
+{
+}
+
+ImageUnit::ImageUnit(const ImageUnit &other) = default;
+
+ImageUnit::~ImageUnit() = default;
 
 static void MinMax(int a, int b, int *minimum, int *maximum)
 {
@@ -235,4 +256,98 @@ bool operator!=(const Extents &lhs, const Extents &rhs)
 {
     return !(lhs == rhs);
 }
+
+DrawBufferTypeMask::DrawBufferTypeMask()
+{
+    mTypeMask.reset();
+}
+
+DrawBufferTypeMask::DrawBufferTypeMask(const DrawBufferTypeMask &other) = default;
+
+DrawBufferTypeMask::~DrawBufferTypeMask() = default;
+
+void DrawBufferTypeMask::reset()
+{
+    mTypeMask.reset();
+}
+
+bool DrawBufferTypeMask::none()
+{
+    if (mTypeMask.none())
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void DrawBufferTypeMask::setIndex(GLenum type, size_t index)
+{
+    ASSERT(index <= IMPLEMENTATION_MAX_DRAW_BUFFERS);
+
+    mTypeMask &= ~(0x101 << index);
+
+    uint16_t m = 0;
+    switch (type)
+    {
+        case GL_INT:
+            m = 0x001;
+            break;
+        case GL_UNSIGNED_INT:
+            m = 0x100;
+            break;
+        case GL_FLOAT:
+            m = 0x101;
+            break;
+        case GL_NONE:
+            m = 0x000;
+            break;
+        default:
+            UNREACHABLE();
+    }
+
+    mTypeMask |= m << index;
+}
+
+unsigned long DrawBufferTypeMask::to_ulong() const
+{
+    return mTypeMask.to_ulong();
+}
+
+void DrawBufferTypeMask::from_ulong(unsigned long mask)
+{
+    mTypeMask = mask;
+}
+
+bool DrawBufferTypeMask::ProgramOutputsMatchFramebuffer(DrawBufferTypeMask outputTypes,
+                                                        DrawBufferTypeMask inputTypes,
+                                                        DrawBufferMask outputMask,
+                                                        DrawBufferMask inputMask)
+{
+    static_assert(IMPLEMENTATION_MAX_DRAW_BUFFER_TYPE_MASK == 16,
+                  "Draw buffer type masks should fit into 16 bits. 2 bits per draw buffer.");
+    static_assert(IMPLEMENTATION_MAX_DRAW_BUFFERS == 8,
+                  "Output/Input masks should fit into 8 bits. 1 bit per draw buffer");
+
+    // For performance reasons, draw buffer type validation is done using bit masks. We store two
+    // bits representing the type split, with the low bit in the lower 8 bits of the variable,
+    // and the high bit in the upper 8 bits of the variable. This is done so we can AND with the
+    // elswewhere used DrawBufferMask.
+    const unsigned long outputTypeBits = outputTypes.to_ulong();
+    const unsigned long inputTypeBits  = inputTypes.to_ulong();
+
+    unsigned long outputMaskBits = outputMask.to_ulong();
+    unsigned long inputMaskBits  = inputMask.to_ulong();
+
+    // OR the masks with themselves, shifted 8 bits. This is to match our split type bits.
+    outputMaskBits |= (outputMaskBits << 8);
+    inputMaskBits |= (inputMaskBits << 8);
+
+    // To validate:
+    // 1. Remove any indexes that are not enabled in the framebuffer (& inputMask)
+    // 2. Remove any indexes that exist in program, but not in framebuffer (& outputMask)
+    // 3. Use XOR to check for a match
+    return (outputTypeBits & inputMaskBits) == ((inputTypeBits & outputMaskBits) & inputMaskBits);
+}
+
 }  // namespace gl

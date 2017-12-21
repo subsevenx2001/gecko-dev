@@ -26,6 +26,8 @@ ERRMSG(CubemapIncomplete,
 ERRMSG(DefaultFramebufferInvalidAttachment,
        "Invalid attachment when the default framebuffer is bound.");
 ERRMSG(DefaultFramebufferTarget, "It is invalid to change default FBO's attachments");
+ERRMSG(DrawBufferTypeMismatch,
+       "Fragment shader output type does not match the bound framebuffer attachment type.");
 ERRMSG(EnumNotSupported, "Enum is not currently supported.");
 ERRMSG(EnumRequiresGLES31, "Enum requires GLES 3.1");
 ERRMSG(ES31Required, "OpenGL ES 3.1 Required");
@@ -37,7 +39,7 @@ ERRMSG(ExtensionNotEnabled, "Extension is not enabled.");
 ERRMSG(FeedbackLoop, "Feedback loop formed between Framebuffer and active Texture.");
 ERRMSG(FramebufferIncompleteAttachment,
        "Attachment type must be compatible with attachment object.");
-ERRMSG(GenerateMipmapNotAllowed, "Compressed textures do not support mipmap generation.");
+ERRMSG(GenerateMipmapNotAllowed, "Texture format does not support mipmap generation.");
 ERRMSG(IndexExceedsMaxActiveUniform, "Index exceeds program active uniform count.");
 ERRMSG(IndexExceedsMaxDrawBuffer, "Index exceeds MAX_DRAW_BUFFERS.");
 ERRMSG(IndexExceedsMaxVertexAttribute, "Index exceeds MAX_VERTEX_ATTRIBS.");
@@ -69,9 +71,12 @@ ERRMSG(InvalidFilterTexture, "Texture only supports NEAREST and LINEAR filtering
 ERRMSG(InvalidFormat, "Invalid format.");
 ERRMSG(InvalidFramebufferTarget, "Invalid framebuffer target.");
 ERRMSG(InvalidFramebufferTextureLevel, "Mipmap level must be 0 when attaching a texture.");
-ERRMSG(InvalidFramebufferTextureParameter, "Invalid parameter name for framebuffer attachment.");
+ERRMSG(InvalidFramebufferAttachmentParameter, "Invalid parameter name for framebuffer attachment.");
+ERRMSG(InvalidImageUnit,
+       "Image unit cannot be greater than or equal to the value of MAX_IMAGE_UNITS.");
 ERRMSG(InvalidInternalFormat, "Invalid internal format.");
 ERRMSG(InvalidMatrixMode, "Invalid matrix mode.");
+ERRMSG(InvalidMemoryBarrierBit, "Invalid memory barrier bit.");
 ERRMSG(InvalidMipLevel, "Level of detail outside of range.");
 ERRMSG(InvalidName, "Invalid name.");
 ERRMSG(InvalidNameCharacters, "Name contains invalid characters.");
@@ -125,12 +130,15 @@ ERRMSG(NegativeSize, "Cannot have negative height or width.");
 ERRMSG(NegativeStart, "Cannot have negative start.");
 ERRMSG(NegativeStride, "Cannot have negative stride.");
 ERRMSG(NoSuchPath, "No such path object.");
+ERRMSG(NoTransformFeedbackOutputVariables,
+    "The active program has specified no output variables to record.");
 ERRMSG(NoZeroDivisor, "At least one enabled attribute must have a divisor of zero.");
 ERRMSG(ObjectNotGenerated, "Object cannot be used because it has not been generated.");
 ERRMSG(OffsetMustBeMultipleOfType, "Offset must be a multiple of the passed in datatype.");
 ERRMSG(OutsideOfBounds, "Parameter outside of bounds.");
 ERRMSG(ParamOverflow, "The provided parameters overflow with the provided buffer.");
 ERRMSG(PixelDataNotNull, "Pixel data must be null.");
+ERRMSG(PixelDataNull, "Pixel data cannot be null.");
 ERRMSG(ProgramDoesNotExist, "Program doesn't exist.");
 ERRMSG(ProgramNotBound, "A program must be bound.");
 ERRMSG(ProgramNotLinked, "Program not linked.");

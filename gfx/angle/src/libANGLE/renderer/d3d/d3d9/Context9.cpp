@@ -131,12 +131,12 @@ std::vector<PathImpl *> Context9::createPaths(GLsizei)
     return std::vector<PathImpl *>();
 }
 
-gl::Error Context9::flush()
+gl::Error Context9::flush(const gl::Context *context)
 {
     return mRenderer->flush();
 }
 
-gl::Error Context9::finish()
+gl::Error Context9::finish(const gl::Context *context)
 {
     return mRenderer->finish();
 }
@@ -240,6 +240,18 @@ void Context9::popGroupMarker()
     mRenderer->getAnnotator()->endEvent();
 }
 
+void Context9::pushDebugGroup(GLenum source, GLuint id, GLsizei length, const char *message)
+{
+    // Fall through to the EXT_debug_marker functions
+    pushGroupMarker(length, message);
+}
+
+void Context9::popDebugGroup()
+{
+    // Fall through to the EXT_debug_marker functions
+    popGroupMarker();
+}
+
 void Context9::syncState(const gl::Context *context, const gl::State::DirtyBits &dirtyBits)
 {
     mRenderer->getStateManager()->syncState(mState.getState(), dirtyBits);
@@ -286,6 +298,18 @@ gl::Error Context9::dispatchCompute(const gl::Context *context,
 {
     UNREACHABLE();
     return gl::InternalError() << "D3D9 doesn't support ES 3.1 DispatchCompute API";
+}
+
+gl::Error Context9::memoryBarrier(const gl::Context *context, GLbitfield barriers)
+{
+    UNREACHABLE();
+    return gl::InternalError() << "D3D9 doesn't support ES 3.1 memoryBarrier API";
+}
+
+gl::Error Context9::memoryBarrierByRegion(const gl::Context *context, GLbitfield barriers)
+{
+    UNREACHABLE();
+    return gl::InternalError() << "D3D9 doesn't support ES 3.1 memoryBarrierByRegion API";
 }
 
 }  // namespace rx

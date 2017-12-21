@@ -148,12 +148,12 @@ std::vector<PathImpl *> ContextGL::createPaths(GLsizei range)
     return ret;
 }
 
-gl::Error ContextGL::flush()
+gl::Error ContextGL::flush(const gl::Context *context)
 {
     return mRenderer->flush();
 }
 
-gl::Error ContextGL::finish()
+gl::Error ContextGL::finish(const gl::Context *context)
 {
     return mRenderer->finish();
 }
@@ -341,6 +341,16 @@ void ContextGL::popGroupMarker()
     mRenderer->popGroupMarker();
 }
 
+void ContextGL::pushDebugGroup(GLenum source, GLuint id, GLsizei length, const char *message)
+{
+    mRenderer->pushDebugGroup(source, id, length, message);
+}
+
+void ContextGL::popDebugGroup()
+{
+    mRenderer->popDebugGroup();
+}
+
 void ContextGL::syncState(const gl::Context *context, const gl::State::DirtyBits &dirtyBits)
 {
     mRenderer->getStateManager()->syncState(context, dirtyBits);
@@ -408,6 +418,15 @@ gl::Error ContextGL::dispatchCompute(const gl::Context *context,
                                      GLuint numGroupsZ)
 {
     return mRenderer->dispatchCompute(context, numGroupsX, numGroupsY, numGroupsZ);
+}
+
+gl::Error ContextGL::memoryBarrier(const gl::Context *context, GLbitfield barriers)
+{
+    return mRenderer->memoryBarrier(barriers);
+}
+gl::Error ContextGL::memoryBarrierByRegion(const gl::Context *context, GLbitfield barriers)
+{
+    return mRenderer->memoryBarrierByRegion(barriers);
 }
 
 }  // namespace rx

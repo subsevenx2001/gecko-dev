@@ -20,14 +20,30 @@ namespace gl
 {
 struct UniformTypeInfo;
 
+struct StaticallyUsed
+{
+    StaticallyUsed();
+    StaticallyUsed(const StaticallyUsed &rhs);
+    virtual ~StaticallyUsed();
+
+    StaticallyUsed &operator=(const StaticallyUsed &rhs);
+
+    void setStaticUse(GLenum shaderType, bool used);
+    void unionReferencesWith(const StaticallyUsed &other);
+
+    bool vertexStaticUse;
+    bool fragmentStaticUse;
+    bool computeStaticUse;
+};
+
 // Helper struct representing a single shader uniform
-struct LinkedUniform : public sh::Uniform
+struct LinkedUniform : public sh::Uniform, public StaticallyUsed
 {
     LinkedUniform();
     LinkedUniform(GLenum type,
                   GLenum precision,
                   const std::string &name,
-                  unsigned int arraySize,
+                  const std::vector<unsigned int> &arraySizes,
                   const int binding,
                   const int offset,
                   const int location,
@@ -36,7 +52,7 @@ struct LinkedUniform : public sh::Uniform
     LinkedUniform(const sh::Uniform &uniform);
     LinkedUniform(const LinkedUniform &uniform);
     LinkedUniform &operator=(const LinkedUniform &uniform);
-    ~LinkedUniform();
+    ~LinkedUniform() override;
 
     bool isSampler() const;
     bool isImage() const;
@@ -53,23 +69,35 @@ struct LinkedUniform : public sh::Uniform
     sh::BlockMemberInfo blockInfo;
 };
 
+struct BufferVariable : public sh::ShaderVariable, public StaticallyUsed
+{
+    BufferVariable();
+    BufferVariable(GLenum type,
+                   GLenum precision,
+                   const std::string &name,
+                   const std::vector<unsigned int> &arraySizes,
+                   const int bufferIndex,
+                   const sh::BlockMemberInfo &blockInfo);
+    ~BufferVariable() override;
+
+    int bufferIndex;
+    sh::BlockMemberInfo blockInfo;
+
+    int topLevelArraySize;
+};
+
 // Parent struct for atomic counter, uniform block, and shader storage block buffer, which all
 // contain a group of shader variables, and have a GL buffer backed.
-struct ShaderVariableBuffer
+struct ShaderVariableBuffer : public StaticallyUsed
 {
     ShaderVariableBuffer();
-    virtual ~ShaderVariableBuffer();
-    ShaderVariableBuffer(const ShaderVariableBuffer &other) = default;
-    ShaderVariableBuffer &operator=(const ShaderVariableBuffer &other) = default;
-    int numActiveVariables() const { return static_cast<int>(memberIndexes.size()); }
+    ShaderVariableBuffer(const ShaderVariableBuffer &other);
+    ~ShaderVariableBuffer() override;
+    int numActiveVariables() const;
 
     int binding;
     unsigned int dataSize;
     std::vector<unsigned int> memberIndexes;
-
-    bool vertexStaticUse;
-    bool fragmentStaticUse;
-    bool computeStaticUse;
 };
 
 using AtomicCounterBuffer = ShaderVariableBuffer;
@@ -83,8 +111,6 @@ struct InterfaceBlock : public ShaderVariableBuffer
                    bool isArrayIn,
                    unsigned int arrayElementIn,
                    int bindingIn);
-    InterfaceBlock(const InterfaceBlock &other) = default;
-    InterfaceBlock &operator=(const InterfaceBlock &other) = default;
 
     std::string nameWithArrayIndex() const;
     std::string mappedNameWithArrayIndex() const;

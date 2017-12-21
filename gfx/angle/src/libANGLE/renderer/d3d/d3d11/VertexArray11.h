@@ -12,6 +12,7 @@
 #include "libANGLE/Framebuffer.h"
 #include "libANGLE/renderer/VertexArrayImpl.h"
 #include "libANGLE/renderer/d3d/d3d11/Renderer11.h"
+#include "libANGLE/renderer/d3d/d3d11/renderer11_utils.h"
 #include "libANGLE/signal_utils.h"
 
 namespace rx
@@ -22,19 +23,18 @@ class VertexArray11 : public VertexArrayImpl, public OnBufferDataDirtyReceiver
 {
   public:
     VertexArray11(const gl::VertexArrayState &data);
+    ~VertexArray11() override;
     void destroy(const gl::Context *context) override;
 
     void syncState(const gl::Context *context,
                    const gl::VertexArray::DirtyBits &dirtyBits) override;
     // This will flush any pending attrib updates and then check the dynamic attribs mask.
-    bool hasDynamicAttrib(const gl::Context *context);
-    bool hasDirtyOrDynamicAttrib(const gl::Context *context);
+    bool hasActiveDynamicAttrib(const gl::Context *context);
     gl::Error updateDirtyAndDynamicAttribs(const gl::Context *context,
                                            VertexDataManager *vertexDataManager,
-                                           GLint start,
-                                           GLsizei count,
-                                           GLsizei instances);
-    void clearDirtyAndPromoteDynamicAttribs(const gl::Context *context, GLsizei count);
+                                           const DrawCallVertexParams &vertexParams);
+    void clearDirtyAndPromoteDynamicAttribs(const gl::Context *context,
+                                            const DrawCallVertexParams &vertexParams);
 
     const std::vector<TranslatedAttribute> &getTranslatedAttribs() const;
 
@@ -48,6 +48,16 @@ class VertexArray11 : public VertexArrayImpl, public OnBufferDataDirtyReceiver
     void markAllAttributeDivisorsForAdjustment(int numViews);
 
     bool flushAttribUpdates(const gl::Context *context);
+
+    // Returns true if the element array buffer needs to be translated.
+    bool updateElementArrayStorage(const gl::Context *context,
+                                   GLenum elementType,
+                                   GLenum destElementType,
+                                   const void *indices);
+
+    TranslatedIndexData *getCachedIndexInfo();
+    void setCachedIndexInfoValid();
+    bool isCachedIndexInfoValid() const;
 
   private:
     void updateVertexAttribStorage(const gl::Context *context, size_t attribIndex);
@@ -65,14 +75,23 @@ class VertexArray11 : public VertexArrayImpl, public OnBufferDataDirtyReceiver
     gl::AttributesMask mAttribsToTranslate;
 
     // We need to keep a safe pointer to the Buffer so we can attach the correct dirty callbacks.
-    std::vector<gl::BindingPointer<gl::Buffer>> mCurrentBuffers;
+    std::vector<gl::BindingPointer<gl::Buffer>> mCurrentArrayBuffers;
+    gl::BindingPointer<gl::Buffer> mCurrentElementArrayBuffer;
 
-    std::vector<OnBufferDataDirtyBinding> mOnBufferDataDirty;
+    std::vector<OnBufferDataDirtyBinding> mOnArrayBufferDataDirty;
+    OnBufferDataDirtyBinding mOnElementArrayBufferDataDirty;
 
     Serial mCurrentStateSerial;
 
     // The numViews value used to adjust the divisor.
     int mAppliedNumViewsToDivisor;
+
+    // If the index buffer needs re-streaming.
+    GLenum mLastElementType;
+    unsigned int mLastDrawElementsOffset;
+    IndexStorageType mCurrentElementArrayStorage;
+    TranslatedIndexData mCachedIndexInfo;
+    bool mCachedIndexInfoValid;
 };
 
 }  // namespace rx

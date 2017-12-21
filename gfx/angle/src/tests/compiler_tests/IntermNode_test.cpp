@@ -7,11 +7,12 @@
 //   Unit tests for the AST node classes.
 //
 
-#include "angle_gl.h"
-#include "gtest/gtest.h"
-#include "compiler/translator/InfoSink.h"
 #include "compiler/translator/IntermNode.h"
+#include "angle_gl.h"
+#include "compiler/translator/InfoSink.h"
 #include "compiler/translator/PoolAlloc.h"
+#include "compiler/translator/SymbolTable.h"
+#include "gtest/gtest.h"
 
 using namespace sh;
 
@@ -37,13 +38,18 @@ class IntermNodeTest : public testing::Test
     {
         TInfoSinkBase symbolNameOut;
         symbolNameOut << "test" << mUniqueIndex;
-        TString symbolName = symbolNameOut.c_str();
+        TString *symbolName = NewPoolTString(symbolNameOut.c_str());
         ++mUniqueIndex;
 
-        TIntermSymbol *node = new TIntermSymbol(0, symbolName, type);
+        // We're using a dummy symbol table here, don't need to assign proper symbol ids to these
+        // nodes.
+        TSymbolTable symbolTable;
+        TType variableType(type);
+        variableType.setQualifier(EvqTemporary);
+        TVariable *variable =
+            new TVariable(&symbolTable, symbolName, variableType, SymbolType::AngleInternal);
+        TIntermSymbol *node = new TIntermSymbol(variable);
         node->setLine(createUniqueSourceLoc());
-        node->setInternal(true);
-        node->getTypePointer()->setQualifier(EvqTemporary);
         return node;
     }
 
@@ -117,9 +123,14 @@ class IntermNodeTest : public testing::Test
 TEST_F(IntermNodeTest, DeepCopySymbolNode)
 {
     TType type(EbtInt, EbpHigh);
-    TIntermSymbol *original = new TIntermSymbol(0, TString("name"), type);
+
+    // We're using a dummy symbol table here, don't need to assign proper symbol ids to these nodes.
+    TSymbolTable symbolTable;
+
+    TVariable *variable =
+        new TVariable(&symbolTable, NewPoolTString("name"), type, SymbolType::AngleInternal);
+    TIntermSymbol *original = new TIntermSymbol(variable);
     original->setLine(getTestSourceLoc());
-    original->setInternal(true);
     TIntermTyped *copy = original->deepCopy();
     checkSymbolCopy(original, copy);
     checkTestSourceLoc(copy->getLine());

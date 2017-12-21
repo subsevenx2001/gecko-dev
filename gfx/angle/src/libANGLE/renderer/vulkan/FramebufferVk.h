@@ -15,6 +15,7 @@
 
 namespace rx
 {
+class RendererVk;
 class RenderTargetVk;
 class WindowSurfaceVk;
 
@@ -76,36 +77,31 @@ class FramebufferVk : public FramebufferImpl, public ResourceVk
                    GLbitfield mask,
                    GLenum filter) override;
 
-    bool checkStatus() const override;
+    bool checkStatus(const gl::Context *context) const override;
 
     void syncState(const gl::Context *context,
                    const gl::Framebuffer::DirtyBits &dirtyBits) override;
 
     gl::Error getSamplePosition(size_t index, GLfloat *xy) const override;
 
-    gl::Error ensureInRenderPass(const gl::Context *context,
-                                 VkDevice device,
-                                 vk::CommandBuffer *commandBuffer,
-                                 Serial queueSerial,
-                                 const gl::State &glState);
-    void endRenderPass(vk::CommandBuffer *commandBuffer);
+    gl::Error beginRenderPass(const gl::Context *context,
+                              RendererVk *rendererVk,
+                              vk::CommandBuffer *commandBuffer,
+                              Serial queueSerial);
 
-    bool isInRenderPass() const { return mInRenderPass; }
-
-    gl::ErrorOrResult<vk::RenderPass *> getRenderPass(const gl::Context *context, VkDevice device);
+    const vk::RenderPassDesc &getRenderPassDesc(const gl::Context *context);
 
   private:
     FramebufferVk(const gl::FramebufferState &state);
     FramebufferVk(const gl::FramebufferState &state, WindowSurfaceVk *backbuffer);
 
     gl::ErrorOrResult<vk::Framebuffer *> getFramebuffer(const gl::Context *context,
-                                                        VkDevice device);
+                                                        RendererVk *rendererVk);
 
     WindowSurfaceVk *mBackbuffer;
 
-    vk::RenderPass mRenderPass;
+    Optional<vk::RenderPassDesc> mRenderPassDesc;
     vk::Framebuffer mFramebuffer;
-    bool mInRenderPass;
 };
 
 }  // namespace rx

@@ -51,14 +51,19 @@ const Type &GetTypeInfo(GLenum type);
 struct InternalFormat
 {
     InternalFormat();
+    InternalFormat(const InternalFormat &other);
 
-    ErrorOrResult<GLuint> computeRowPitch(GLsizei width,
+    GLuint computePixelBytes(GLenum formatType) const;
+
+    ErrorOrResult<GLuint> computeRowPitch(GLenum formatType,
+                                          GLsizei width,
                                           GLint alignment,
                                           GLint rowLength) const;
-    static ErrorOrResult<GLuint> computeDepthPitch(GLsizei height,
-                                                   GLint imageHeight,
-                                                   GLuint rowPitch);
-    ErrorOrResult<GLuint> computeDepthPitch(GLsizei width,
+    ErrorOrResult<GLuint> computeDepthPitch(GLsizei height,
+                                            GLint imageHeight,
+                                            GLuint rowPitch) const;
+    ErrorOrResult<GLuint> computeDepthPitch(GLenum formatType,
+                                            GLsizei width,
                                             GLsizei height,
                                             GLint alignment,
                                             GLint rowLength,
@@ -71,9 +76,10 @@ struct InternalFormat
                                            const PixelStoreStateBase &state,
                                            bool is3D) const;
 
-    ErrorOrResult<GLuint> computePackUnpackEndByte(const Extents &size,
-                                                   const PixelStoreStateBase &state,
-                                                   bool is3D) const;
+    ErrorOrResult<GLuint> computePackUnpackEndByte(GLenum formatType,
+                                                       const Extents &size,
+                                                       const PixelStoreStateBase &state,
+                                                       bool is3D) const;
 
     bool isLUMA() const;
     GLenum getReadPixelsFormat() const;
