@@ -7,8 +7,7 @@
 # generate_mozbuild.py.
 #
 # WARNING WARNING WARNING
-#
-UNIFIED_SOURCES += [
+SOURCES += [
     'entry_points_egl.cpp',
     'entry_points_egl_ext.cpp',
     'entry_points_gles_2_0_autogen.cpp',
@@ -64,7 +63,7 @@ DEFINES['EGLAPI'] = ""
 
 
 
-LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/numerics', '../../src/third_party/khronos' ]
+LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/base', '../../src/common/third_party/smhasher', '../../src/third_party/khronos' ]
 
 DEFINES['LIBANGLE_IMPLEMENTATION'] = "1"
 DEFINES['ANGLE_ENABLE_HLSL'] = "1"

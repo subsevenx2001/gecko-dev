@@ -34,7 +34,6 @@ UNIFIED_SOURCES += [
     'src/compiler/translator/AddDefaultReturnStatements.cpp',
     'src/compiler/translator/ArrayReturnValueToOutParameter.cpp',
     'src/compiler/translator/ASTMetadataHLSL.cpp',
-    'src/compiler/translator/blocklayout.cpp',
     'src/compiler/translator/blocklayoutHLSL.cpp',
     'src/compiler/translator/BreakVariableAliasingInInnerLoops.cpp',
     'src/compiler/translator/BuiltInFunctionEmulator.cpp',
@@ -121,22 +120,23 @@ UNIFIED_SOURCES += [
     'src/compiler/translator/ValidateGlobalInitializer.cpp',
     'src/compiler/translator/ValidateLimitations.cpp',
     'src/compiler/translator/ValidateMaxParameters.cpp',
-    'src/compiler/translator/ValidateOutputs.cpp',
     'src/compiler/translator/ValidateSwitch.cpp',
     'src/compiler/translator/ValidateVaryingLocations.cpp',
-    'src/compiler/translator/VariablePacker.cpp',
     'src/compiler/translator/VectorizeVectorScalarArithmetic.cpp',
     'src/compiler/translator/VersionGLSL.cpp',
     'src/compiler/translator/WrapSwitchStatementsInBlocks.cpp',
     'src/third_party/compiler/ArrayBoundsClamper.cpp',
 ]
 SOURCES += [
+    'src/compiler/translator/blocklayout.cpp',
     'src/compiler/translator/EmulateGLFragColorBroadcast.cpp',
     'src/compiler/translator/glslang_lex.cpp',
     'src/compiler/translator/glslang_tab.cpp',
     'src/compiler/translator/RewriteTexelFetchOffset.cpp',
     'src/compiler/translator/RewriteUnaryMinusOperatorInt.cpp',
     'src/compiler/translator/ShaderLang.cpp',
+    'src/compiler/translator/ValidateOutputs.cpp',
+    'src/compiler/translator/VariablePacker.cpp',
 ]
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     UNIFIED_SOURCES += [
@@ -202,9 +202,9 @@ DEFINES['ANGLE_ENABLE_KEYEDMUTEX'] = "1"
 EXPORTS.angle += [ 'include/GLSLANG/ShaderLang.h', 'include/GLSLANG/ShaderVars.h', 'include/platform/Platform.h' ]
 EXPORTS.angle.KHR += [ 'include/KHR/khrplatform.h' ]
 
-LOCAL_INCLUDES += [ 'include', 'src', 'src/common/third_party/numerics' ]
+LOCAL_INCLUDES += [ 'include', 'src', 'src/common/third_party/base', 'src/common/third_party/smhasher' ]
 
 # We allow warnings for third-party code that can be updated from upstream.
-ALLOW_COMPILER_WARNINGS = True
+AllowCompilerWarnings()
 
 FINAL_LIBRARY = 'gkmedias'
