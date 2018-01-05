@@ -13,10 +13,12 @@ UNIFIED_SOURCES += [
     'entry_points_egl_ext.cpp',
     'entry_points_gles_2_0_autogen.cpp',
     'entry_points_gles_2_0_ext.cpp',
+    'entry_points_gles_2_0_ext_autogen.cpp',
     'entry_points_gles_3_0_autogen.cpp',
-    'entry_points_gles_3_1.cpp',
+    'entry_points_gles_3_1_autogen.cpp',
     'global_state.cpp',
     'libGLESv2.cpp',
+    'proc_table_autogen.cpp',
 ]
 
 
@@ -27,6 +29,7 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         '-Wno-sign-compare',
         '-Wno-unknown-pragmas',
         '-Wno-unreachable-code',
+        '-Wno-missing-braces',
     ]
     if CONFIG['CC_TYPE'] == 'clang':
         CXXFLAGS += [
@@ -66,7 +69,7 @@ DEFINES['EGLAPI'] = ""
 
 
 
-LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/base', '../../src/third_party/khronos' ]
+LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/base', '../../src/common/third_party/smhasher', '../../src/third_party/khronos' ]
 
 DEFINES['LIBANGLE_IMPLEMENTATION'] = "1"
 DEFINES['ANGLE_ENABLE_HLSL'] = "1"

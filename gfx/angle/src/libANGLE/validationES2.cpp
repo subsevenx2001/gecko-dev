@@ -15,6 +15,7 @@
 #include "common/utilities.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/ErrorStrings.h"
+#include "libANGLE/Fence.h"
 #include "libANGLE/Framebuffer.h"
 #include "libANGLE/FramebufferAttachment.h"
 #include "libANGLE/Renderbuffer.h"
@@ -306,27 +307,36 @@ bool IsValidCopyTextureDestinationFormatType(Context *context, GLint internalFor
     return true;
 }
 
-bool IsValidCopyTextureDestinationTarget(Context *context, GLenum textureType, GLenum target)
+bool IsValidCopyTextureDestinationTargetEnum(Context *context, GLenum target)
 {
     switch (target)
     {
         case GL_TEXTURE_2D:
-            return textureType == GL_TEXTURE_2D;
-
         case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
         case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
         case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
         case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
         case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
         case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
-            return textureType == GL_TEXTURE_CUBE_MAP;
+            return true;
 
         case GL_TEXTURE_RECTANGLE_ANGLE:
-            return textureType == GL_TEXTURE_RECTANGLE_ANGLE &&
-                   context->getExtensions().textureRectangle;
+            return context->getExtensions().textureRectangle;
 
         default:
             return false;
+    }
+}
+
+bool IsValidCopyTextureDestinationTarget(Context *context, GLenum textureType, GLenum target)
+{
+    if (IsCubeMapTextureTarget(target))
+    {
+        return textureType == GL_TEXTURE_CUBE_MAP;
+    }
+    else
+    {
+        return textureType == target;
     }
 }
 
@@ -788,7 +798,7 @@ bool ValidCap(const Context *context, GLenum cap, bool queryOnly)
         case GL_SAMPLE_MASK:
             return context->getClientVersion() >= Version(3, 1);
 
-        case GL_CONTEXT_ROBUST_RESOURCE_INITIALIZATION_ANGLE:
+        case GL_ROBUST_RESOURCE_INITIALIZATION_ANGLE:
             return queryOnly && context->getExtensions().robustResourceInitialization;
 
         default:
@@ -919,8 +929,12 @@ bool IsValidESSLShaderSourceString(const char *str, size_t len, bool lineContinu
                 break;
 
             case ParseState::IN_PREPROCESSOR_DIRECTIVE:
-                // No matter what the character is, just pass it
-                // through. Do not parse comments in this state.
+                // Line-continuation characters may not be permitted.
+                // Otherwise, just pass it through. Do not parse comments in this state.
+                if (!lineContinuationAllowed && c == '\\')
+                {
+                    return false;
+                }
                 pos++;
                 break;
 
@@ -988,6 +1002,21 @@ bool ValidateWebGLNameLength(ValidationContext *context, size_t length)
     return true;
 }
 
+bool ValidateMatrixMode(Context *context, GLenum matrixMode)
+{
+    if (!context->getExtensions().pathRendering)
+    {
+        context->handleError(InvalidOperation() << "GL_CHROMIUM_path_rendering is not available.");
+        return false;
+    }
+
+    if (matrixMode != GL_PATH_MODELVIEW_CHROMIUM && matrixMode != GL_PATH_PROJECTION_CHROMIUM)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidMatrixMode);
+        return false;
+    }
+    return true;
+}
 }  // anonymous namespace
 
 bool ValidateES2TexImageParameters(Context *context,
@@ -1127,6 +1156,13 @@ bool ValidateES2TexImageParameters(Context *context,
             context->handleError(InvalidValue());
             return false;
         }
+
+        if (width > 0 && height > 0 && pixels == nullptr &&
+            context->getGLState().getTargetBuffer(gl::BufferBinding::PixelUnpack) == nullptr)
+        {
+            ANGLE_VALIDATION_ERR(context, InvalidValue(), PixelDataNull);
+            return false;
+        }
     }
     else
     {
@@ -1160,7 +1196,7 @@ bool ValidateES2TexImageParameters(Context *context,
                 }
                 break;
             case GL_COMPRESSED_RGBA_S3TC_DXT3_ANGLE:
-                if (!context->getExtensions().textureCompressionDXT1)
+                if (!context->getExtensions().textureCompressionDXT3)
                 {
                     ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidInternalFormat);
                     return false;
@@ -1189,6 +1225,11 @@ bool ValidateES2TexImageParameters(Context *context,
                     ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidInternalFormat);
                     return false;
                 }
+                if (isSubImage)
+                {
+                    ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidInternalFormat);
+                    return false;
+                }
                 break;
             case GL_ETC1_RGB8_LOSSY_DECODE_ANGLE:
             case GL_COMPRESSED_RGB8_LOSSY_DECODE_ETC2_ANGLE:
@@ -1197,8 +1238,7 @@ bool ValidateES2TexImageParameters(Context *context,
             case GL_COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_LOSSY_DECODE_ETC2_ANGLE:
                 if (!context->getExtensions().lossyETCDecode)
                 {
-                    context->handleError(InvalidEnum()
-                                         << "ANGLE_lossy_etc_decode extension is not supported");
+                    ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidInternalFormat);
                     return false;
                 }
                 break;
@@ -1281,8 +1321,14 @@ bool ValidateES2TexImageParameters(Context *context,
                 switch (type)
                 {
                     case GL_UNSIGNED_BYTE:
+                        break;
                     case GL_FLOAT:
                     case GL_HALF_FLOAT_OES:
+                        if (!context->getExtensions().textureFloat)
+                        {
+                            context->handleError(InvalidEnum());
+                            return false;
+                        }
                         break;
                     default:
                         ANGLE_VALIDATION_ERR(context, InvalidOperation(), MismatchedTypeAndFormat);
@@ -1317,6 +1363,11 @@ bool ValidateES2TexImageParameters(Context *context,
                 }
                 break;
             case GL_BGRA_EXT:
+                if (!context->getExtensions().textureFormatBGRA8888)
+                {
+                    context->handleError(InvalidEnum());
+                    return false;
+                }
                 switch (type)
                 {
                     case GL_UNSIGNED_BYTE:
@@ -2467,9 +2518,9 @@ bool ValidateBlitFramebufferANGLE(Context *context,
         if (mask & masks[i])
         {
             const FramebufferAttachment *readBuffer =
-                readFramebuffer->getAttachment(attachments[i]);
+                readFramebuffer->getAttachment(context, attachments[i]);
             const FramebufferAttachment *drawBuffer =
-                drawFramebuffer->getAttachment(attachments[i]);
+                drawFramebuffer->getAttachment(context, attachments[i]);
 
             if (readBuffer && drawBuffer)
             {
@@ -2498,7 +2549,7 @@ bool ValidateBlitFramebufferANGLE(Context *context,
 
 bool ValidateClear(ValidationContext *context, GLbitfield mask)
 {
-    auto fbo = context->getGLState().getDrawFramebuffer();
+    Framebuffer *fbo = context->getGLState().getDrawFramebuffer();
     if (fbo->checkStatus(context) != GL_FRAMEBUFFER_COMPLETE)
     {
         context->handleError(InvalidFramebufferOperation());
@@ -2678,8 +2729,7 @@ bool ValidateCompressedTexImage2D(Context *context,
     }
 
     const InternalFormat &formatInfo = GetSizedInternalFormatInfo(internalformat);
-    auto blockSizeOrErr =
-        formatInfo.computeCompressedImageSize(gl::Extents(width, height, 1));
+    auto blockSizeOrErr = formatInfo.computeCompressedImageSize(gl::Extents(width, height, 1));
     if (blockSizeOrErr.isError())
     {
         context->handleError(blockSizeOrErr.getError());
@@ -2772,8 +2822,7 @@ bool ValidateCompressedTexSubImage2D(Context *context,
     }
 
     const InternalFormat &formatInfo = GetSizedInternalFormatInfo(format);
-    auto blockSizeOrErr =
-        formatInfo.computeCompressedImageSize(gl::Extents(width, height, 1));
+    auto blockSizeOrErr = formatInfo.computeCompressedImageSize(gl::Extents(width, height, 1));
     if (blockSizeOrErr.isError())
     {
         context->handleError(blockSizeOrErr.getError());
@@ -2789,12 +2838,15 @@ bool ValidateCompressedTexSubImage2D(Context *context,
     return true;
 }
 
-bool ValidateGetBufferPointervOES(Context *context, GLenum target, GLenum pname, void **params)
+bool ValidateGetBufferPointervOES(Context *context,
+                                  BufferBinding target,
+                                  GLenum pname,
+                                  void **params)
 {
     return ValidateGetBufferPointervBase(context, target, pname, nullptr, params);
 }
 
-bool ValidateMapBufferOES(Context *context, GLenum target, GLenum access)
+bool ValidateMapBufferOES(Context *context, BufferBinding target, GLenum access)
 {
     if (!context->getExtensions().mapBuffer)
     {
@@ -2802,7 +2854,7 @@ bool ValidateMapBufferOES(Context *context, GLenum target, GLenum access)
         return false;
     }
 
-    if (!ValidBufferTarget(context, target))
+    if (!context->isValidBufferBinding(target))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBufferTypes);
         return false;
@@ -2831,7 +2883,7 @@ bool ValidateMapBufferOES(Context *context, GLenum target, GLenum access)
     return ValidateMapBufferBase(context, target);
 }
 
-bool ValidateUnmapBufferOES(Context *context, GLenum target)
+bool ValidateUnmapBufferOES(Context *context, BufferBinding target)
 {
     if (!context->getExtensions().mapBuffer)
     {
@@ -2843,7 +2895,7 @@ bool ValidateUnmapBufferOES(Context *context, GLenum target)
 }
 
 bool ValidateMapBufferRangeEXT(Context *context,
-                               GLenum target,
+                               BufferBinding target,
                                GLintptr offset,
                                GLsizeiptr length,
                                GLbitfield access)
@@ -2857,7 +2909,7 @@ bool ValidateMapBufferRangeEXT(Context *context,
     return ValidateMapBufferRangeBase(context, target, offset, length, access);
 }
 
-bool ValidateMapBufferBase(Context *context, GLenum target)
+bool ValidateMapBufferBase(Context *context, BufferBinding target)
 {
     Buffer *buffer = context->getGLState().getTargetBuffer(target);
     ASSERT(buffer != nullptr);
@@ -2882,7 +2934,7 @@ bool ValidateMapBufferBase(Context *context, GLenum target)
 }
 
 bool ValidateFlushMappedBufferRangeEXT(Context *context,
-                                       GLenum target,
+                                       BufferBinding target,
                                        GLintptr offset,
                                        GLsizeiptr length)
 {
@@ -3037,42 +3089,28 @@ bool ValidateCoverageModulationCHROMIUM(Context *context, GLenum components)
 
 // CHROMIUM_path_rendering
 
-bool ValidateMatrix(Context *context, GLenum matrixMode, const GLfloat *matrix)
+bool ValidateMatrixLoadfCHROMIUM(Context *context, GLenum matrixMode, const GLfloat *matrix)
 {
-    if (!context->getExtensions().pathRendering)
+    if (!ValidateMatrixMode(context, matrixMode))
     {
-        context->handleError(InvalidOperation() << "GL_CHROMIUM_path_rendering is not available.");
         return false;
     }
-    if (matrixMode != GL_PATH_MODELVIEW_CHROMIUM && matrixMode != GL_PATH_PROJECTION_CHROMIUM)
-    {
-        ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidMatrixMode);
-        return false;
-    }
+
     if (matrix == nullptr)
     {
         context->handleError(InvalidOperation() << "Invalid matrix.");
         return false;
     }
+
     return true;
 }
 
-bool ValidateMatrixMode(Context *context, GLenum matrixMode)
+bool ValidateMatrixLoadIdentityCHROMIUM(Context *context, GLenum matrixMode)
 {
-    if (!context->getExtensions().pathRendering)
-    {
-        context->handleError(InvalidOperation() << "GL_CHROMIUM_path_rendering is not available.");
-        return false;
-    }
-    if (matrixMode != GL_PATH_MODELVIEW_CHROMIUM && matrixMode != GL_PATH_PROJECTION_CHROMIUM)
-    {
-        ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidMatrixMode);
-        return false;
-    }
-    return true;
+    return ValidateMatrixMode(context, matrixMode);
 }
 
-bool ValidateGenPaths(Context *context, GLsizei range)
+bool ValidateGenPathsCHROMIUM(Context *context, GLsizei range)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3097,7 +3135,7 @@ bool ValidateGenPaths(Context *context, GLsizei range)
     return true;
 }
 
-bool ValidateDeletePaths(Context *context, GLuint path, GLsizei range)
+bool ValidateDeletePathsCHROMIUM(Context *context, GLuint path, GLsizei range)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3124,13 +3162,13 @@ bool ValidateDeletePaths(Context *context, GLuint path, GLsizei range)
     return true;
 }
 
-bool ValidatePathCommands(Context *context,
-                          GLuint path,
-                          GLsizei numCommands,
-                          const GLubyte *commands,
-                          GLsizei numCoords,
-                          GLenum coordType,
-                          const void *coords)
+bool ValidatePathCommandsCHROMIUM(Context *context,
+                                  GLuint path,
+                                  GLsizei numCommands,
+                                  const GLubyte *commands,
+                                  GLsizei numCoords,
+                                  GLenum coordType,
+                                  const void *coords)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3245,7 +3283,7 @@ bool ValidatePathCommands(Context *context,
     return true;
 }
 
-bool ValidateSetPathParameter(Context *context, GLuint path, GLenum pname, GLfloat value)
+bool ValidatePathParameterfCHROMIUM(Context *context, GLuint path, GLenum pname, GLfloat value)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3309,7 +3347,13 @@ bool ValidateSetPathParameter(Context *context, GLuint path, GLenum pname, GLflo
     return true;
 }
 
-bool ValidateGetPathParameter(Context *context, GLuint path, GLenum pname, GLfloat *value)
+bool ValidatePathParameteriCHROMIUM(Context *context, GLuint path, GLenum pname, GLint value)
+{
+    // TODO(jmadill): Use proper clamping cast.
+    return ValidatePathParameterfCHROMIUM(context, path, pname, static_cast<GLfloat>(value));
+}
+
+bool ValidateGetPathParameterfvCHROMIUM(Context *context, GLuint path, GLenum pname, GLfloat *value)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3345,7 +3389,13 @@ bool ValidateGetPathParameter(Context *context, GLuint path, GLenum pname, GLflo
     return true;
 }
 
-bool ValidatePathStencilFunc(Context *context, GLenum func, GLint ref, GLuint mask)
+bool ValidateGetPathParameterivCHROMIUM(Context *context, GLuint path, GLenum pname, GLint *value)
+{
+    return ValidateGetPathParameterfvCHROMIUM(context, path, pname,
+                                              reinterpret_cast<GLfloat *>(value));
+}
+
+bool ValidatePathStencilFuncCHROMIUM(Context *context, GLenum func, GLint ref, GLuint mask)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3378,7 +3428,7 @@ bool ValidatePathStencilFunc(Context *context, GLenum func, GLint ref, GLuint ma
 // However if the path object exists but has not been specified any
 // commands then an error is generated.
 
-bool ValidateStencilFillPath(Context *context, GLuint path, GLenum fillMode, GLuint mask)
+bool ValidateStencilFillPathCHROMIUM(Context *context, GLuint path, GLenum fillMode, GLuint mask)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3410,7 +3460,7 @@ bool ValidateStencilFillPath(Context *context, GLuint path, GLenum fillMode, GLu
     return true;
 }
 
-bool ValidateStencilStrokePath(Context *context, GLuint path, GLint reference, GLuint mask)
+bool ValidateStencilStrokePathCHROMIUM(Context *context, GLuint path, GLint reference, GLuint mask)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3426,7 +3476,7 @@ bool ValidateStencilStrokePath(Context *context, GLuint path, GLint reference, G
     return true;
 }
 
-bool ValidateCoverPath(Context *context, GLuint path, GLenum coverMode)
+bool ValidateCoverPathCHROMIUM(Context *context, GLuint path, GLenum coverMode)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3451,27 +3501,27 @@ bool ValidateCoverPath(Context *context, GLuint path, GLenum coverMode)
     return true;
 }
 
-bool ValidateStencilThenCoverFillPath(Context *context,
-                                      GLuint path,
-                                      GLenum fillMode,
-                                      GLuint mask,
-                                      GLenum coverMode)
+bool ValidateStencilThenCoverFillPathCHROMIUM(Context *context,
+                                              GLuint path,
+                                              GLenum fillMode,
+                                              GLuint mask,
+                                              GLenum coverMode)
 {
-    return ValidateStencilFillPath(context, path, fillMode, mask) &&
-           ValidateCoverPath(context, path, coverMode);
+    return ValidateStencilFillPathCHROMIUM(context, path, fillMode, mask) &&
+           ValidateCoverPathCHROMIUM(context, path, coverMode);
 }
 
-bool ValidateStencilThenCoverStrokePath(Context *context,
-                                        GLuint path,
-                                        GLint reference,
-                                        GLuint mask,
-                                        GLenum coverMode)
+bool ValidateStencilThenCoverStrokePathCHROMIUM(Context *context,
+                                                GLuint path,
+                                                GLint reference,
+                                                GLuint mask,
+                                                GLenum coverMode)
 {
-    return ValidateStencilStrokePath(context, path, reference, mask) &&
-           ValidateCoverPath(context, path, coverMode);
+    return ValidateStencilStrokePathCHROMIUM(context, path, reference, mask) &&
+           ValidateCoverPathCHROMIUM(context, path, coverMode);
 }
 
-bool ValidateIsPath(Context *context)
+bool ValidateIsPathCHROMIUM(Context *context)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3481,14 +3531,14 @@ bool ValidateIsPath(Context *context)
     return true;
 }
 
-bool ValidateCoverFillPathInstanced(Context *context,
-                                    GLsizei numPaths,
-                                    GLenum pathNameType,
-                                    const void *paths,
-                                    GLuint pathBase,
-                                    GLenum coverMode,
-                                    GLenum transformType,
-                                    const GLfloat *transformValues)
+bool ValidateCoverFillPathInstancedCHROMIUM(Context *context,
+                                            GLsizei numPaths,
+                                            GLenum pathNameType,
+                                            const void *paths,
+                                            GLuint pathBase,
+                                            GLenum coverMode,
+                                            GLenum transformType,
+                                            const GLfloat *transformValues)
 {
     if (!ValidateInstancedPathParameters(context, numPaths, pathNameType, paths, pathBase,
                                          transformType, transformValues))
@@ -3508,14 +3558,14 @@ bool ValidateCoverFillPathInstanced(Context *context,
     return true;
 }
 
-bool ValidateCoverStrokePathInstanced(Context *context,
-                                      GLsizei numPaths,
-                                      GLenum pathNameType,
-                                      const void *paths,
-                                      GLuint pathBase,
-                                      GLenum coverMode,
-                                      GLenum transformType,
-                                      const GLfloat *transformValues)
+bool ValidateCoverStrokePathInstancedCHROMIUM(Context *context,
+                                              GLsizei numPaths,
+                                              GLenum pathNameType,
+                                              const void *paths,
+                                              GLuint pathBase,
+                                              GLenum coverMode,
+                                              GLenum transformType,
+                                              const GLfloat *transformValues)
 {
     if (!ValidateInstancedPathParameters(context, numPaths, pathNameType, paths, pathBase,
                                          transformType, transformValues))
@@ -3535,15 +3585,15 @@ bool ValidateCoverStrokePathInstanced(Context *context,
     return true;
 }
 
-bool ValidateStencilFillPathInstanced(Context *context,
-                                      GLsizei numPaths,
-                                      GLenum pathNameType,
-                                      const void *paths,
-                                      GLuint pathBase,
-                                      GLenum fillMode,
-                                      GLuint mask,
-                                      GLenum transformType,
-                                      const GLfloat *transformValues)
+bool ValidateStencilFillPathInstancedCHROMIUM(Context *context,
+                                              GLsizei numPaths,
+                                              GLenum pathNameType,
+                                              const void *paths,
+                                              GLuint pathBase,
+                                              GLenum fillMode,
+                                              GLuint mask,
+                                              GLenum transformType,
+                                              const GLfloat *transformValues)
 {
 
     if (!ValidateInstancedPathParameters(context, numPaths, pathNameType, paths, pathBase,
@@ -3567,15 +3617,15 @@ bool ValidateStencilFillPathInstanced(Context *context,
     return true;
 }
 
-bool ValidateStencilStrokePathInstanced(Context *context,
-                                        GLsizei numPaths,
-                                        GLenum pathNameType,
-                                        const void *paths,
-                                        GLuint pathBase,
-                                        GLint reference,
-                                        GLuint mask,
-                                        GLenum transformType,
-                                        const GLfloat *transformValues)
+bool ValidateStencilStrokePathInstancedCHROMIUM(Context *context,
+                                                GLsizei numPaths,
+                                                GLenum pathNameType,
+                                                const void *paths,
+                                                GLuint pathBase,
+                                                GLint reference,
+                                                GLuint mask,
+                                                GLenum transformType,
+                                                const GLfloat *transformValues)
 {
     if (!ValidateInstancedPathParameters(context, numPaths, pathNameType, paths, pathBase,
                                          transformType, transformValues))
@@ -3586,16 +3636,16 @@ bool ValidateStencilStrokePathInstanced(Context *context,
     return true;
 }
 
-bool ValidateStencilThenCoverFillPathInstanced(Context *context,
-                                               GLsizei numPaths,
-                                               GLenum pathNameType,
-                                               const void *paths,
-                                               GLuint pathBase,
-                                               GLenum fillMode,
-                                               GLuint mask,
-                                               GLenum coverMode,
-                                               GLenum transformType,
-                                               const GLfloat *transformValues)
+bool ValidateStencilThenCoverFillPathInstancedCHROMIUM(Context *context,
+                                                       GLsizei numPaths,
+                                                       GLenum pathNameType,
+                                                       const void *paths,
+                                                       GLuint pathBase,
+                                                       GLenum fillMode,
+                                                       GLuint mask,
+                                                       GLenum coverMode,
+                                                       GLenum transformType,
+                                                       const GLfloat *transformValues)
 {
     if (!ValidateInstancedPathParameters(context, numPaths, pathNameType, paths, pathBase,
                                          transformType, transformValues))
@@ -3630,16 +3680,16 @@ bool ValidateStencilThenCoverFillPathInstanced(Context *context,
     return true;
 }
 
-bool ValidateStencilThenCoverStrokePathInstanced(Context *context,
-                                                 GLsizei numPaths,
-                                                 GLenum pathNameType,
-                                                 const void *paths,
-                                                 GLuint pathBase,
-                                                 GLint reference,
-                                                 GLuint mask,
-                                                 GLenum coverMode,
-                                                 GLenum transformType,
-                                                 const GLfloat *transformValues)
+bool ValidateStencilThenCoverStrokePathInstancedCHROMIUM(Context *context,
+                                                         GLsizei numPaths,
+                                                         GLenum pathNameType,
+                                                         const void *paths,
+                                                         GLuint pathBase,
+                                                         GLint reference,
+                                                         GLuint mask,
+                                                         GLenum coverMode,
+                                                         GLenum transformType,
+                                                         const GLfloat *transformValues)
 {
     if (!ValidateInstancedPathParameters(context, numPaths, pathNameType, paths, pathBase,
                                          transformType, transformValues))
@@ -3659,10 +3709,10 @@ bool ValidateStencilThenCoverStrokePathInstanced(Context *context,
     return true;
 }
 
-bool ValidateBindFragmentInputLocation(Context *context,
-                                       GLuint program,
-                                       GLint location,
-                                       const GLchar *name)
+bool ValidateBindFragmentInputLocationCHROMIUM(Context *context,
+                                               GLuint program,
+                                               GLint location,
+                                               const GLchar *name)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3699,12 +3749,12 @@ bool ValidateBindFragmentInputLocation(Context *context,
     return true;
 }
 
-bool ValidateProgramPathFragmentInputGen(Context *context,
-                                         GLuint program,
-                                         GLint location,
-                                         GLenum genMode,
-                                         GLint components,
-                                         const GLfloat *coeffs)
+bool ValidateProgramPathFragmentInputGenCHROMIUM(Context *context,
+                                                 GLuint program,
+                                                 GLint location,
+                                                 GLenum genMode,
+                                                 GLint components,
+                                                 const GLfloat *coeffs)
 {
     if (!context->getExtensions().pathRendering)
     {
@@ -3856,6 +3906,12 @@ bool ValidateCopyTextureCHROMIUM(Context *context,
         return false;
     }
 
+    if (!IsValidCopyTextureDestinationTargetEnum(context, destTarget))
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidTextureTarget);
+        return false;
+    }
+
     const Texture *dest = context->getTexture(destId);
     if (dest == nullptr)
     {
@@ -3975,6 +4031,12 @@ bool ValidateCopySubTextureCHROMIUM(Context *context,
     if (!IsValidCopySubTextureSourceInternalFormat(sourceFormat.info->internalFormat))
     {
         ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidInternalFormat);
+        return false;
+    }
+
+    if (!IsValidCopyTextureDestinationTargetEnum(context, destTarget))
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidTextureTarget);
         return false;
     }
 
@@ -4106,6 +4168,13 @@ bool ValidateCreateShader(Context *context, GLenum type)
             }
             break;
 
+        case GL_GEOMETRY_SHADER_EXT:
+            if (!context->getExtensions().geometryShader)
+            {
+                ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidShaderType);
+                return false;
+            }
+            break;
         default:
             ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidShaderType);
             return false;
@@ -4115,10 +4184,10 @@ bool ValidateCreateShader(Context *context, GLenum type)
 }
 
 bool ValidateBufferData(ValidationContext *context,
-                        GLenum target,
+                        BufferBinding target,
                         GLsizeiptr size,
                         const void *data,
-                        GLenum usage)
+                        BufferUsage usage)
 {
     if (size < 0)
     {
@@ -4128,17 +4197,17 @@ bool ValidateBufferData(ValidationContext *context,
 
     switch (usage)
     {
-        case GL_STREAM_DRAW:
-        case GL_STATIC_DRAW:
-        case GL_DYNAMIC_DRAW:
+        case BufferUsage::StreamDraw:
+        case BufferUsage::StaticDraw:
+        case BufferUsage::DynamicDraw:
             break;
 
-        case GL_STREAM_READ:
-        case GL_STREAM_COPY:
-        case GL_STATIC_READ:
-        case GL_STATIC_COPY:
-        case GL_DYNAMIC_READ:
-        case GL_DYNAMIC_COPY:
+        case BufferUsage::StreamRead:
+        case BufferUsage::StaticRead:
+        case BufferUsage::DynamicRead:
+        case BufferUsage::StreamCopy:
+        case BufferUsage::StaticCopy:
+        case BufferUsage::DynamicCopy:
             if (context->getClientMajorVersion() < 3)
             {
                 ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBufferUsage);
@@ -4151,7 +4220,7 @@ bool ValidateBufferData(ValidationContext *context,
             return false;
     }
 
-    if (!ValidBufferTarget(context, target))
+    if (!context->isValidBufferBinding(target))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBufferTypes);
         return false;
@@ -4169,7 +4238,7 @@ bool ValidateBufferData(ValidationContext *context,
 }
 
 bool ValidateBufferSubData(ValidationContext *context,
-                           GLenum target,
+                           BufferBinding target,
                            GLintptr offset,
                            GLsizeiptr size,
                            const void *data)
@@ -4186,7 +4255,7 @@ bool ValidateBufferSubData(ValidationContext *context,
         return false;
     }
 
-    if (!ValidBufferTarget(context, target))
+    if (!context->isValidBufferBinding(target))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBufferTypes);
         return false;
@@ -4224,7 +4293,7 @@ bool ValidateBufferSubData(ValidationContext *context,
     return true;
 }
 
-bool ValidateRequestExtensionANGLE(ValidationContext *context, const GLchar *name)
+bool ValidateRequestExtensionANGLE(Context *context, const GLchar *name)
 {
     if (!context->getExtensions().requestExtension)
     {
@@ -4232,9 +4301,7 @@ bool ValidateRequestExtensionANGLE(ValidationContext *context, const GLchar *nam
         return false;
     }
 
-    const ExtensionInfoMap &extensionInfos = GetExtensionInfoMap();
-    auto extension                         = extensionInfos.find(name);
-    if (extension == extensionInfos.end() || !extension->second.Requestable)
+    if (!context->isExtensionRequestable(name))
     {
         context->handleError(InvalidOperation() << "Extension " << name << " is not requestable.");
         return false;
@@ -4298,6 +4365,15 @@ bool ValidateAttachShader(ValidationContext *context, GLuint program, GLuint sha
             }
             break;
         }
+        case GL_GEOMETRY_SHADER_EXT:
+        {
+            if (programObject->getAttachedGeometryShader())
+            {
+                ANGLE_VALIDATION_ERR(context, InvalidOperation(), ShaderAttachmentHasShader);
+                return false;
+            }
+            break;
+        }
         default:
             UNREACHABLE();
             break;
@@ -4344,9 +4420,9 @@ bool ValidateBindAttribLocation(ValidationContext *context,
     return GetValidProgram(context, program) != nullptr;
 }
 
-bool ValidateBindBuffer(ValidationContext *context, GLenum target, GLuint buffer)
+bool ValidateBindBuffer(ValidationContext *context, BufferBinding target, GLuint buffer)
 {
-    if (!ValidBufferTarget(context, target))
+    if (!context->isValidBufferBinding(target))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBufferTypes);
         return false;
@@ -4364,7 +4440,7 @@ bool ValidateBindBuffer(ValidationContext *context, GLenum target, GLuint buffer
 
 bool ValidateBindFramebuffer(ValidationContext *context, GLenum target, GLuint framebuffer)
 {
-    if (!ValidFramebufferTarget(target))
+    if (!ValidFramebufferTarget(context, target))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidFramebufferTarget);
         return false;
@@ -4398,16 +4474,18 @@ bool ValidateBindRenderbuffer(ValidationContext *context, GLenum target, GLuint 
     return true;
 }
 
-static bool ValidBlendEquationMode(GLenum mode)
+static bool ValidBlendEquationMode(const ValidationContext *context, GLenum mode)
 {
     switch (mode)
     {
         case GL_FUNC_ADD:
         case GL_FUNC_SUBTRACT:
         case GL_FUNC_REVERSE_SUBTRACT:
+            return true;
+
         case GL_MIN:
         case GL_MAX:
-            return true;
+            return context->getClientVersion() >= ES_3_0 || context->getExtensions().blendMinMax;
 
         default:
             return false;
@@ -4425,7 +4503,7 @@ bool ValidateBlendColor(ValidationContext *context,
 
 bool ValidateBlendEquation(ValidationContext *context, GLenum mode)
 {
-    if (!ValidBlendEquationMode(mode))
+    if (!ValidBlendEquationMode(context, mode))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBlendEquation);
         return false;
@@ -4436,13 +4514,13 @@ bool ValidateBlendEquation(ValidationContext *context, GLenum mode)
 
 bool ValidateBlendEquationSeparate(ValidationContext *context, GLenum modeRGB, GLenum modeAlpha)
 {
-    if (!ValidBlendEquationMode(modeRGB))
+    if (!ValidBlendEquationMode(context, modeRGB))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBlendEquation);
         return false;
     }
 
-    if (!ValidBlendEquationMode(modeAlpha))
+    if (!ValidBlendEquationMode(context, modeAlpha))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBlendEquation);
         return false;
@@ -4655,7 +4733,8 @@ bool ValidateVertexAttribPointer(ValidationContext *context,
     // and the pointer argument is not NULL.
     bool nullBufferAllowed = context->getGLState().areClientArraysEnabled() &&
                              context->getGLState().getVertexArray()->id() == 0;
-    if (!nullBufferAllowed && context->getGLState().getArrayBufferId() == 0 && ptr != nullptr)
+    if (!nullBufferAllowed && context->getGLState().getTargetBuffer(BufferBinding::Array) == 0 &&
+        ptr != nullptr)
     {
         context
             ->handleError(InvalidOperation()
@@ -4746,7 +4825,7 @@ bool ValidateRenderbufferStorageMultisampleANGLE(ValidationContext *context,
 
 bool ValidateCheckFramebufferStatus(ValidationContext *context, GLenum target)
 {
-    if (!ValidFramebufferTarget(target))
+    if (!ValidFramebufferTarget(context, target))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidFramebufferTarget);
         return false;
@@ -4793,13 +4872,13 @@ bool ValidateCreateProgram(ValidationContext *context)
     return true;
 }
 
-bool ValidateCullFace(ValidationContext *context, GLenum mode)
+bool ValidateCullFace(ValidationContext *context, CullFaceMode mode)
 {
     switch (mode)
     {
-        case GL_FRONT:
-        case GL_BACK:
-        case GL_FRONT_AND_BACK:
+        case CullFaceMode::Front:
+        case CullFaceMode::Back:
+        case CullFaceMode::FrontAndBack:
             break;
 
         default:
@@ -4916,6 +4995,11 @@ bool ValidateDetachShader(ValidationContext *context, GLuint program, GLuint sha
         case GL_COMPUTE_SHADER:
         {
             attachedShader = programObject->getAttachedComputeShader();
+            break;
+        }
+        case GL_GEOMETRY_SHADER_EXT:
+        {
+            attachedShader = programObject->getAttachedGeometryShader();
             break;
         }
         default:
@@ -5372,6 +5456,12 @@ bool ValidatePixelStorei(ValidationContext *context, GLenum pname, GLint param)
             break;
 
         case GL_PACK_REVERSE_ROW_ORDER_ANGLE:
+            if (!context->getExtensions().packReverseRowOrder)
+            {
+                ANGLE_VALIDATION_ERR(context, InvalidEnum(), EnumNotSupported);
+            }
+            break;
+
         case GL_UNPACK_ROW_LENGTH:
         case GL_UNPACK_IMAGE_HEIGHT:
         case GL_UNPACK_SKIP_IMAGES:
@@ -5758,7 +5848,7 @@ bool ValidateDrawElements(ValidationContext *context,
     return ValidateDrawElementsCommon(context, mode, count, type, indices, 1);
 }
 
-bool ValidateGetFramebufferAttachmentParameteriv(ValidationContext *context,
+bool ValidateGetFramebufferAttachmentParameteriv(Context *context,
                                                  GLenum target,
                                                  GLenum attachment,
                                                  GLenum pname,
@@ -5874,7 +5964,7 @@ bool ValidateFramebufferRenderbuffer(Context *context,
                                      GLenum renderbuffertarget,
                                      GLuint renderbuffer)
 {
-    if (!ValidFramebufferTarget(target))
+    if (!ValidFramebufferTarget(context, target))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidFramebufferTarget);
         return false;
@@ -6057,37 +6147,40 @@ bool ValidateGenerateMipmap(Context *context, GLenum target)
     }
 
     GLenum baseTarget  = (target == GL_TEXTURE_CUBE_MAP) ? GL_TEXTURE_CUBE_MAP_POSITIVE_X : target;
-    const auto &format = texture->getFormat(baseTarget, effectiveBaseLevel);
-    const TextureCaps &formatCaps = context->getTextureCaps().get(format.info->sizedInternalFormat);
-
-    if (format.info->compressed)
+    const auto &format = *(texture->getFormat(baseTarget, effectiveBaseLevel).info);
+    if (format.sizedInternalFormat == GL_NONE || format.compressed || format.depthBits > 0 ||
+        format.stencilBits > 0)
     {
         ANGLE_VALIDATION_ERR(context, InvalidOperation(), GenerateMipmapNotAllowed);
         return false;
     }
 
-    // GenerateMipmap should not generate an INVALID_OPERATION for textures created with
-    // unsized formats or that are color renderable and filterable. Since we do not track if
-    // the texture was created with sized or unsized format (only sized formats are stored),
-    // it is not possible to make sure the the LUMA formats can generate mipmaps (they should
-    // be able to) because they aren't color renderable.  Simply do a special case for LUMA
-    // textures since they're the only texture format that can be created with unsized formats
-    // that is not color renderable.  New unsized formats are unlikely to be added, since ES2
-    // was the last version to use add them.
-    if (format.info->depthBits > 0 || format.info->stencilBits > 0 || !formatCaps.filterable ||
-        (!formatCaps.renderable && !format.info->isLUMA()))
+    // GenerateMipmap accepts formats that are unsized or both color renderable and filterable.
+    bool formatUnsized = !format.sized;
+    bool formatColorRenderableAndFilterable =
+        format.filterSupport(context->getClientVersion(), context->getExtensions()) &&
+        format.renderSupport(context->getClientVersion(), context->getExtensions());
+    if (!formatUnsized && !formatColorRenderableAndFilterable)
     {
-        context->handleError(InvalidOperation());
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), GenerateMipmapNotAllowed);
         return false;
     }
 
-    // ES3 and WebGL grant mipmap generation for sRGB textures but GL_EXT_sRGB does not.
+    // GL_EXT_sRGB adds an unsized SRGB (no alpha) format which has explicitly disabled mipmap
+    // generation
+    if (format.colorEncoding == GL_SRGB && format.format == GL_RGB)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), GenerateMipmapNotAllowed);
+        return false;
+    }
+
+    // ES3 and WebGL grant mipmap generation for sRGBA (with alpha) textures but GL_EXT_sRGB does
+    // not.
     bool supportsSRGBMipmapGeneration =
         context->getClientVersion() >= ES_3_0 || context->getExtensions().webglCompatibility;
-    if (!supportsSRGBMipmapGeneration && format.info->colorEncoding == GL_SRGB)
+    if (!supportsSRGBMipmapGeneration && format.colorEncoding == GL_SRGB)
     {
-        context->handleError(InvalidOperation()
-                             << "Mipmap generation of sRGB textures is not allowed.");
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), GenerateMipmapNotAllowed);
         return false;
     }
 
@@ -6113,7 +6206,7 @@ bool ValidateGenerateMipmap(Context *context, GLenum target)
 }
 
 bool ValidateGetBufferParameteriv(ValidationContext *context,
-                                  GLenum target,
+                                  BufferBinding target,
                                   GLenum pname,
                                   GLint *params)
 {
@@ -6267,6 +6360,325 @@ bool ValidateUseProgram(Context *context, GLuint program)
     }
 
     return true;
+}
+
+bool ValidateDeleteFencesNV(Context *context, GLsizei n, const GLuint *fences)
+{
+    if (!context->getExtensions().fence)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), NVFenceNotSupported);
+        return false;
+    }
+
+    if (n < 0)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidValue(), NegativeCount);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateFinishFenceNV(Context *context, GLuint fence)
+{
+    if (!context->getExtensions().fence)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), NVFenceNotSupported);
+        return false;
+    }
+
+    FenceNV *fenceObject = context->getFenceNV(fence);
+
+    if (fenceObject == nullptr)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidFence);
+        return false;
+    }
+
+    if (!fenceObject->isSet())
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidFenceState);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateGenFencesNV(Context *context, GLsizei n, GLuint *fences)
+{
+    if (!context->getExtensions().fence)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), NVFenceNotSupported);
+        return false;
+    }
+
+    if (n < 0)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidValue(), NegativeCount);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateGetFenceivNV(Context *context, GLuint fence, GLenum pname, GLint *params)
+{
+    if (!context->getExtensions().fence)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), NVFenceNotSupported);
+        return false;
+    }
+
+    FenceNV *fenceObject = context->getFenceNV(fence);
+
+    if (fenceObject == nullptr)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidFence);
+        return false;
+    }
+
+    if (!fenceObject->isSet())
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidFenceState);
+        return false;
+    }
+
+    switch (pname)
+    {
+        case GL_FENCE_STATUS_NV:
+        case GL_FENCE_CONDITION_NV:
+            break;
+
+        default:
+            ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidPname);
+            return false;
+    }
+
+    return true;
+}
+
+bool ValidateGetGraphicsResetStatusEXT(Context *context)
+{
+    if (!context->getExtensions().robustness)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateGetTranslatedShaderSourceANGLE(Context *context,
+                                            GLuint shader,
+                                            GLsizei bufsize,
+                                            GLsizei *length,
+                                            GLchar *source)
+{
+    if (!context->getExtensions().translatedShaderSource)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+        return false;
+    }
+
+    if (bufsize < 0)
+    {
+        context->handleError(InvalidValue());
+        return false;
+    }
+
+    Shader *shaderObject = context->getShader(shader);
+
+    if (!shaderObject)
+    {
+        context->handleError(InvalidOperation());
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateIsFenceNV(Context *context, GLuint fence)
+{
+    if (!context->getExtensions().fence)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), NVFenceNotSupported);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateSetFenceNV(Context *context, GLuint fence, GLenum condition)
+{
+    if (!context->getExtensions().fence)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), NVFenceNotSupported);
+        return false;
+    }
+
+    if (condition != GL_ALL_COMPLETED_NV)
+    {
+        context->handleError(InvalidEnum());
+        return false;
+    }
+
+    FenceNV *fenceObject = context->getFenceNV(fence);
+
+    if (fenceObject == nullptr)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidFence);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateTestFenceNV(Context *context, GLuint fence)
+{
+    if (!context->getExtensions().fence)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), NVFenceNotSupported);
+        return false;
+    }
+
+    FenceNV *fenceObject = context->getFenceNV(fence);
+
+    if (fenceObject == nullptr)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidFence);
+        return false;
+    }
+
+    if (fenceObject->isSet() != GL_TRUE)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), InvalidFenceState);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateTexStorage2DEXT(Context *context,
+                             GLenum target,
+                             GLsizei levels,
+                             GLenum internalformat,
+                             GLsizei width,
+                             GLsizei height)
+{
+    if (!context->getExtensions().textureStorage)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+        return false;
+    }
+
+    if (context->getClientMajorVersion() < 3)
+    {
+        return ValidateES2TexStorageParameters(context, target, levels, internalformat, width,
+                                               height);
+    }
+
+    ASSERT(context->getClientMajorVersion() >= 3);
+    return ValidateES3TexStorage2DParameters(context, target, levels, internalformat, width, height,
+                                             1);
+}
+
+bool ValidateVertexAttribDivisorANGLE(Context *context, GLuint index, GLuint divisor)
+{
+    if (!context->getExtensions().instancedArrays)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+        return false;
+    }
+
+    if (index >= MAX_VERTEX_ATTRIBS)
+    {
+        context->handleError(InvalidValue());
+        return false;
+    }
+
+    if (context->getLimitations().attributeZeroRequiresZeroDivisorInEXT)
+    {
+        if (index == 0 && divisor != 0)
+        {
+            const char *errorMessage =
+                "The current context doesn't support setting a non-zero divisor on the "
+                "attribute with index zero. "
+                "Please reorder the attributes in your vertex shader so that attribute zero "
+                "can have a zero divisor.";
+            context->handleError(InvalidOperation() << errorMessage);
+
+            // We also output an error message to the debugger window if tracing is active, so
+            // that developers can see the error message.
+            ERR() << errorMessage;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ValidateTexImage3DOES(Context *context,
+                           GLenum target,
+                           GLint level,
+                           GLenum internalformat,
+                           GLsizei width,
+                           GLsizei height,
+                           GLsizei depth,
+                           GLint border,
+                           GLenum format,
+                           GLenum type,
+                           const void *pixels)
+{
+    UNIMPLEMENTED();  // FIXME
+    return false;
+}
+
+bool ValidatePopGroupMarkerEXT(Context *context)
+{
+    if (!context->getExtensions().debugMarker)
+    {
+        // The debug marker calls should not set error state
+        // However, it seems reasonable to set an error state if the extension is not enabled
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateTexStorage1DEXT(Context *context,
+                             GLenum target,
+                             GLsizei levels,
+                             GLenum internalformat,
+                             GLsizei width)
+{
+    UNIMPLEMENTED();
+    ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+    return false;
+}
+
+bool ValidateTexStorage3DEXT(Context *context,
+                             GLenum target,
+                             GLsizei levels,
+                             GLenum internalformat,
+                             GLsizei width,
+                             GLsizei height,
+                             GLsizei depth)
+{
+    if (!context->getExtensions().textureStorage)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+        return false;
+    }
+
+    if (context->getClientMajorVersion() < 3)
+    {
+        ANGLE_VALIDATION_ERR(context, InvalidOperation(), ExtensionNotEnabled);
+        return false;
+    }
+
+    return ValidateES3TexStorage3DParameters(context, target, levels, internalformat, width, height,
+                                             depth);
 }
 
 }  // namespace gl

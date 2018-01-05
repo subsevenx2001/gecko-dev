@@ -43,7 +43,7 @@ D3D11_BLEND ConvertBlendFunc(GLenum glBlend, bool isAlpha);
 D3D11_BLEND_OP ConvertBlendOp(GLenum glBlendOp);
 UINT8 ConvertColorMask(bool maskRed, bool maskGreen, bool maskBlue, bool maskAlpha);
 
-D3D11_CULL_MODE ConvertCullMode(bool cullEnabled, GLenum cullMode);
+D3D11_CULL_MODE ConvertCullMode(bool cullEnabled, gl::CullFaceMode cullMode);
 
 D3D11_COMPARISON_FUNC ConvertComparison(GLenum comparison);
 D3D11_DEPTH_WRITE_MASK ConvertDepthMask(bool depthWriteEnabled);
@@ -68,10 +68,18 @@ unsigned int GetReservedVertexUniformVectors(D3D_FEATURE_LEVEL featureLevel);
 unsigned int GetReservedFragmentUniformVectors(D3D_FEATURE_LEVEL featureLevel);
 
 gl::Version GetMaximumClientVersion(D3D_FEATURE_LEVEL featureLevel);
-void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, const Renderer11DeviceCaps &renderer11DeviceCaps, gl::Caps *caps,
-                  gl::TextureCapsMap *textureCapsMap, gl::Extensions *extensions, gl::Limitations *limitations);
+void GenerateCaps(ID3D11Device *device,
+                  ID3D11DeviceContext *deviceContext,
+                  const Renderer11DeviceCaps &renderer11DeviceCaps,
+                  const angle::WorkaroundsD3D &workarounds,
+                  gl::Caps *caps,
+                  gl::TextureCapsMap *textureCapsMap,
+                  gl::Extensions *extensions,
+                  gl::Limitations *limitations);
 
 void GetSamplePosition(GLsizei sampleCount, size_t index, GLfloat *xy);
+
+D3D_FEATURE_LEVEL GetMinimumFeatureLevelForES31();
 
 }  // namespace d3d11_gl
 
@@ -128,7 +136,10 @@ struct BlendStateKey final
     BlendStateKey();
 
     gl::BlendState blendState;
-    bool mrt;
+
+    // An int so struct size rounds nicely.
+    uint32_t rtvMax;
+
     uint8_t rtvMasks[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
 };
 
@@ -141,7 +152,9 @@ struct RasterizerStateKey final
     RasterizerStateKey();
 
     gl::RasterizerState rasterizerState;
-    bool scissorEnabled;
+
+    // Use a 32-bit int to round the struct nicely.
+    uint32_t scissorEnabled;
 };
 
 bool operator==(const RasterizerStateKey &a, const RasterizerStateKey &b);
@@ -178,6 +191,91 @@ inline bool isDeviceLostError(HRESULT errorCode)
     }
 }
 
+template <ResourceType ResourceT>
+class LazyResource : angle::NonCopyable
+{
+  public:
+    constexpr LazyResource() : mResource() {}
+    virtual ~LazyResource() {}
+
+    virtual gl::Error resolve(Renderer11 *renderer) = 0;
+    void reset() { mResource.reset(); }
+    GetD3D11Type<ResourceT> *get() const
+    {
+        ASSERT(mResource.valid());
+        return mResource.get();
+    }
+
+    const Resource11<GetD3D11Type<ResourceT>> &getObj() const { return mResource; }
+
+  protected:
+    LazyResource(LazyResource &&other) : mResource(std::move(other.mResource)) {}
+
+    // Specialized in the cpp file to avoid MSVS/Clang specific code.
+    gl::Error resolveImpl(Renderer11 *renderer,
+                          const GetDescType<ResourceT> &desc,
+                          GetInitDataType<ResourceT> *initData,
+                          const char *name);
+
+    Resource11<GetD3D11Type<ResourceT>> mResource;
+};
+
+template <typename D3D11ShaderType>
+class LazyShader final : public LazyResource<GetResourceTypeFromD3D11<D3D11ShaderType>()>
+{
+  public:
+    // All parameters must be constexpr. Not supported in VS2013.
+    constexpr LazyShader(const BYTE *byteCode, size_t byteCodeSize, const char *name)
+        : mByteCode(byteCode, byteCodeSize), mName(name)
+    {
+    }
+
+    constexpr LazyShader(LazyShader &&shader)
+        : LazyResource<GetResourceTypeFromD3D11<D3D11ShaderType>()>(std::move(shader)),
+          mByteCode(std::move(shader.mByteCode)),
+          mName(shader.mName)
+    {
+    }
+
+    gl::Error resolve(Renderer11 *renderer) override
+    {
+        return this->resolveImpl(renderer, mByteCode, nullptr, mName);
+    }
+
+  private:
+    ShaderData mByteCode;
+    const char *mName;
+};
+
+class LazyInputLayout final : public LazyResource<ResourceType::InputLayout>
+{
+  public:
+    LazyInputLayout(const D3D11_INPUT_ELEMENT_DESC *inputDesc,
+                    size_t inputDescLen,
+                    const BYTE *byteCode,
+                    size_t byteCodeLen,
+                    const char *debugName);
+    ~LazyInputLayout() override;
+
+    gl::Error resolve(Renderer11 *renderer) override;
+
+  private:
+    InputElementArray mInputDesc;
+    ShaderData mByteCode;
+    const char *mDebugName;
+};
+
+class LazyBlendState final : public LazyResource<ResourceType::BlendState>
+{
+  public:
+    LazyBlendState(const D3D11_BLEND_DESC &desc, const char *debugName);
+
+    gl::Error resolve(Renderer11 *renderer) override;
+
+  private:
+    D3D11_BLEND_DESC mDesc;
+    const char *mDebugName;
+};
 
 // Copy data to small D3D11 buffers, such as for small constant buffers, which use one struct to
 // represent an entire buffer.
@@ -238,7 +336,7 @@ class TextureHelper11 : public Resource11Base<ID3D11Resource, std::shared_ptr, G
     TextureHelper11();
     TextureHelper11(TextureHelper11 &&other);
     TextureHelper11(const TextureHelper11 &other);
-    ~TextureHelper11();
+    ~TextureHelper11() override;
     TextureHelper11 &operator=(TextureHelper11 &&other);
     TextureHelper11 &operator=(const TextureHelper11 &other);
 
@@ -256,7 +354,7 @@ class TextureHelper11 : public Resource11Base<ID3D11Resource, std::shared_ptr, G
         std::swap(mData->manager, texture.mData->manager);
 
         // Can't use std::swap because texture is typed, and here we use ID3D11Resource.
-        auto temp             = mData->object;
+        ID3D11Resource *temp  = mData->object;
         mData->object         = texture.mData->object;
         texture.mData->object = static_cast<ResourceT *>(temp);
 
@@ -299,6 +397,32 @@ enum class StagingAccess
 };
 
 bool UsePresentPathFast(const Renderer11 *renderer, const gl::FramebufferAttachment *colorbuffer);
+bool UsePrimitiveRestartWorkaround(bool primitiveRestartFixedIndexEnabled, GLenum type);
+bool IsStreamingIndexData(const gl::Context *context, GLenum srcType);
+
+enum class IndexStorageType
+{
+    // Dynamic indexes are re-streamed every frame. They come from a client data pointer or
+    // from buffers that are updated frequently.
+    Dynamic,
+
+    // Static indexes are translated from the original storage once, and re-used multiple times.
+    Static,
+
+    // Direct indexes are never transated and are used directly from the source buffer. They are
+    // the fastest available path.
+    Direct,
+
+    // Not a real storage type.
+    Invalid,
+};
+
+IndexStorageType ClassifyIndexStorage(const gl::State &glState,
+                                      const gl::Buffer *elementArrayBuffer,
+                                      GLenum elementType,
+                                      GLenum destElementType,
+                                      unsigned int offset,
+                                      bool *needsTranslation);
 
 // Used for state change notifications between buffers and vertex arrays.
 using OnBufferDataDirtyBinding  = angle::ChannelBinding<size_t, const gl::Context *>;

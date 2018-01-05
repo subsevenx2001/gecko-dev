@@ -423,9 +423,11 @@ TEST_P(ProgramBinaryES31Test, ProgramBinaryWithComputeShader)
 
     // Load a new program with the binary.
     ANGLE_GL_BINARY_ES3_PROGRAM(binaryProgram, binary, binaryFormat);
+    ASSERT_GL_NO_ERROR();
 
-    // TODO(Xinghua): add dispatch support when available.
-
+    // Dispatch compute with the loaded binary program
+    glUseProgram(binaryProgram.get());
+    glDispatchCompute(8, 4, 2);
     ASSERT_GL_NO_ERROR();
 }
 
@@ -746,8 +748,8 @@ TEST_P(ProgramBinariesAcrossPlatforms, CreateAndReloadBinary)
 
     // If the test is trying to use both the default GPU and WARP, but the default GPU *IS* WARP,
     // then our expectations for the test results will be invalid.
-    if (firstRenderer.eglParameters.deviceType != EGL_PLATFORM_ANGLE_DEVICE_TYPE_WARP_ANGLE &&
-        secondRenderer.eglParameters.deviceType == EGL_PLATFORM_ANGLE_DEVICE_TYPE_WARP_ANGLE)
+    if (firstRenderer.eglParameters.deviceType != EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE &&
+        secondRenderer.eglParameters.deviceType == EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE)
     {
         std::string rendererString = std::string(reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
         angle::ToLower(&rendererString);

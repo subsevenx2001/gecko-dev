@@ -147,12 +147,12 @@ std::vector<PathImpl *> Context11::createPaths(GLsizei)
     return std::vector<PathImpl *>();
 }
 
-gl::Error Context11::flush()
+gl::Error Context11::flush(const gl::Context *context)
 {
     return mRenderer->flush();
 }
 
-gl::Error Context11::finish()
+gl::Error Context11::finish(const gl::Context *context)
 {
     return mRenderer->finish();
 }
@@ -261,6 +261,18 @@ void Context11::popGroupMarker()
     mRenderer->getAnnotator()->endEvent();
 }
 
+void Context11::pushDebugGroup(GLenum source, GLuint id, GLsizei length, const char *message)
+{
+    // Fall through to the EXT_debug_marker functions
+    pushGroupMarker(length, message);
+}
+
+void Context11::popDebugGroup()
+{
+    // Fall through to the EXT_debug_marker functions
+    popGroupMarker();
+}
+
 void Context11::syncState(const gl::Context *context, const gl::State::DirtyBits &dirtyBits)
 {
     mRenderer->getStateManager()->syncState(context, dirtyBits);
@@ -307,6 +319,12 @@ gl::Error Context11::dispatchCompute(const gl::Context *context,
                                      GLuint numGroupsZ)
 {
     return mRenderer->dispatchCompute(context, numGroupsX, numGroupsY, numGroupsZ);
+}
+
+gl::Error Context11::dispatchComputeIndirect(const gl::Context *context, GLintptr indirect)
+{
+    UNIMPLEMENTED();
+    return gl::InternalError();
 }
 
 gl::Error Context11::triggerDrawCallProgramRecompilation(const gl::Context *context,
@@ -387,6 +405,18 @@ gl::Error Context11::triggerDrawCallProgramRecompilation(const gl::Context *cont
 gl::Error Context11::prepareForDrawCall(const gl::Context *context, GLenum drawMode)
 {
     ANGLE_TRY(mRenderer->getStateManager()->updateState(context, drawMode));
+    return gl::NoError();
+}
+
+gl::Error Context11::memoryBarrier(const gl::Context *context, GLbitfield barriers)
+{
+    UNIMPLEMENTED();
+    return gl::NoError();
+}
+
+gl::Error Context11::memoryBarrierByRegion(const gl::Context *context, GLbitfield barriers)
+{
+    UNIMPLEMENTED();
     return gl::NoError();
 }
 

@@ -23,7 +23,7 @@
 
 namespace rx
 {
-
+class Buffer11;
 struct RenderTargetDesc;
 struct Renderer11DeviceCaps;
 
@@ -31,9 +31,10 @@ class ShaderConstants11 : angle::NonCopyable
 {
   public:
     ShaderConstants11();
+    ~ShaderConstants11();
 
     void init(const gl::Caps &caps);
-    size_t getRequiredBufferSize(gl::SamplerType samplerType) const;
+    size_t getRequiredBufferSize(gl::ShaderType shaderType) const;
     void markDirty();
 
     void setComputeWorkGroups(GLuint numGroupsX, GLuint numGroupsY, GLuint numGroupsZ);
@@ -42,12 +43,12 @@ class ShaderConstants11 : angle::NonCopyable
                           const D3D11_VIEWPORT &dxViewport,
                           bool is9_3,
                           bool presentPathFast);
-    void onSamplerChange(gl::SamplerType samplerType,
+    void onSamplerChange(gl::ShaderType shaderType,
                          unsigned int samplerIndex,
                          const gl::Texture &texture);
 
-    gl::Error updateBuffer(ID3D11DeviceContext *deviceContext,
-                           gl::SamplerType samplerType,
+    gl::Error updateBuffer(Renderer11 *renderer,
+                           gl::ShaderType shaderType,
                            const ProgramD3D &programD3D,
                            const d3d11::Buffer &driverConstantBuffer);
 
@@ -140,6 +141,35 @@ class ShaderConstants11 : angle::NonCopyable
     bool mSamplerMetadataCSDirty;
 };
 
+class DrawCallVertexParams final : angle::NonCopyable
+{
+  public:
+    // Use when in a drawArrays call.
+    DrawCallVertexParams(GLint firstVertex, GLsizei vertexCount, GLsizei instances);
+
+    // Use when in a drawElements call.
+    DrawCallVertexParams(bool firstVertexDefinitelyZero,
+                         const gl::HasIndexRange &hasIndexRange,
+                         GLint baseVertex,
+                         GLsizei instances);
+
+    // It should be possible to also use an overload to handle the 'slow' indirect draw path.
+    // TODO(jmadill): Indirect draw slow path overload.
+
+    GLint firstVertex() const;
+    GLsizei vertexCount() const;
+    GLsizei instances() const;
+
+  private:
+    void ensureResolved() const;
+
+    mutable const gl::HasIndexRange *mHasIndexRange;
+    mutable Optional<GLint> mFirstVertex;
+    mutable GLsizei mVertexCount;
+    GLsizei mInstances;
+    GLint mBaseVertex;
+};
+
 class StateManager11 final : angle::NonCopyable
 {
   public:
@@ -185,6 +215,9 @@ class StateManager11 final : angle::NonCopyable
     // Called by VertexArray11 to trigger attribute translation.
     void invalidateVertexAttributeTranslation();
 
+    // Called by the Program on Uniform Buffer change. Also called internally.
+    void invalidateProgramUniformBuffers();
+
     void setRenderTarget(ID3D11RenderTargetView *rtv, ID3D11DepthStencilView *dsv);
     void setRenderTargets(ID3D11RenderTargetView **rtvs, UINT numRtvs, ID3D11DepthStencilView *dsv);
 
@@ -206,10 +239,10 @@ class StateManager11 final : angle::NonCopyable
 
     gl::Error updateState(const gl::Context *context, GLenum drawMode);
 
-    void setShaderResourceShared(gl::SamplerType shaderType,
+    void setShaderResourceShared(gl::ShaderType shaderType,
                                  UINT resourceSlot,
                                  const d3d11::SharedSRV *srv);
-    void setShaderResource(gl::SamplerType shaderType,
+    void setShaderResource(gl::ShaderType shaderType,
                            UINT resourceSlot,
                            const d3d11::ShaderResourceView *srv);
     void setPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY primitiveTopology);
@@ -236,18 +269,17 @@ class StateManager11 final : angle::NonCopyable
     // Not handled by an internal dirty bit because of the extra draw parameters.
     gl::Error applyVertexBuffer(const gl::Context *context,
                                 GLenum mode,
-                                GLint first,
-                                GLsizei count,
-                                GLsizei instances,
-                                TranslatedIndexData *indexInfo);
+                                const DrawCallVertexParams &vertexParams,
+                                bool isIndexedRendering);
 
     gl::Error applyIndexBuffer(const gl::Context *context,
                                const void *indices,
                                GLsizei count,
                                GLenum type,
-                               TranslatedIndexData *indexInfo);
+                               const gl::HasIndexRange &lazyIndexRange,
+                               bool usePrimitiveRestartWorkaround);
 
-    bool setIndexBuffer(ID3D11Buffer *buffer, DXGI_FORMAT indexFormat, unsigned int offset);
+    void setIndexBuffer(ID3D11Buffer *buffer, DXGI_FORMAT indexFormat, unsigned int offset);
 
     gl::Error updateVertexOffsetsForPointSpritesEmulation(GLint startVertex,
                                                           GLsizei emulatedInstanceId);
@@ -260,12 +292,16 @@ class StateManager11 final : angle::NonCopyable
 
   private:
     template <typename SRVType>
-    void setShaderResourceInternal(gl::SamplerType shaderType,
+    void setShaderResourceInternal(gl::ShaderType shaderType,
                                    UINT resourceSlot,
                                    const SRVType *srv);
+    template <typename UAVType>
+    void setUnorderedAccessViewInternal(gl::ShaderType shaderType,
+                                        UINT resourceSlot,
+                                        const UAVType *uav);
 
     bool unsetConflictingView(ID3D11View *view);
-    bool unsetConflictingSRVs(gl::SamplerType shaderType,
+    bool unsetConflictingSRVs(gl::ShaderType shaderType,
                               uintptr_t resource,
                               const gl::ImageIndex *index);
     void unsetConflictingAttachmentResources(const gl::FramebufferAttachment *attachment,
@@ -291,30 +327,33 @@ class StateManager11 final : angle::NonCopyable
     gl::Error syncProgram(const gl::Context *context, GLenum drawMode);
 
     gl::Error syncTextures(const gl::Context *context);
-    gl::Error applyTextures(const gl::Context *context,
-                            gl::SamplerType shaderType,
-                            const FramebufferTextureArray &framebufferTextures,
-                            size_t framebufferTextureCount);
+    gl::Error applyTextures(const gl::Context *context, gl::ShaderType shaderType);
+    gl::Error syncTexturesForCompute(const gl::Context *context);
 
     gl::Error setSamplerState(const gl::Context *context,
-                              gl::SamplerType type,
+                              gl::ShaderType type,
                               int index,
                               gl::Texture *texture,
                               const gl::SamplerState &sampler);
     gl::Error setTexture(const gl::Context *context,
-                         gl::SamplerType type,
+                         gl::ShaderType type,
                          int index,
                          gl::Texture *texture);
+    gl::Error setTextureForImage(const gl::Context *context,
+                                 gl::ShaderType type,
+                                 int index,
+                                 bool readonly,
+                                 const gl::ImageUnit &imageUnit);
 
     // Faster than calling setTexture a jillion times
-    gl::Error clearTextures(gl::SamplerType samplerType, size_t rangeStart, size_t rangeEnd);
+    gl::Error clearSRVs(gl::ShaderType shaderType, size_t rangeStart, size_t rangeEnd);
+    gl::Error clearUAVs(gl::ShaderType shaderType, size_t rangeStart, size_t rangeEnd);
     void handleMultiviewDrawFramebufferChange(const gl::Context *context);
 
-    gl::Error syncVertexAttributes(const gl::Context *context);
     gl::Error syncCurrentValueAttribs(const gl::State &glState);
 
     gl::Error generateSwizzle(const gl::Context *context, gl::Texture *texture);
-    gl::Error generateSwizzlesForShader(const gl::Context *context, gl::SamplerType type);
+    gl::Error generateSwizzlesForShader(const gl::Context *context, gl::ShaderType type);
     gl::Error generateSwizzles(const gl::Context *context);
 
     gl::Error applyDriverUniforms(const ProgramD3D &programD3D);
@@ -327,11 +366,12 @@ class StateManager11 final : angle::NonCopyable
     void invalidateTexturesAndSamplers();
     void invalidateDriverUniforms();
     void invalidateProgramUniforms();
-    void invalidateProgramUniformBuffers();
     void invalidateConstantBuffer(unsigned int slot);
 
     // Called by the Framebuffer11 directly.
     void processFramebufferInvalidation(const gl::Context *context);
+
+    bool syncIndexBuffer(ID3D11Buffer *buffer, DXGI_FORMAT indexFormat, unsigned int offset);
 
     enum DirtyBitType
     {
@@ -403,41 +443,50 @@ class StateManager11 final : angle::NonCopyable
     std::set<Query11 *> mCurrentQueries;
 
     // Currently applied textures
-    struct SRVRecord
+    template <typename DescType>
+    struct ViewRecord
     {
-        uintptr_t srv;
+        uintptr_t view;
         uintptr_t resource;
-        D3D11_SHADER_RESOURCE_VIEW_DESC desc;
+        DescType desc;
     };
 
-    // A cache of current SRVs that also tracks the highest 'used' (non-NULL) SRV
+    // A cache of current Views that also tracks the highest 'used' (non-NULL) View.
     // We might want to investigate a more robust approach that is also fast when there's
-    // a large gap between used SRVs (e.g. if SRV 0 and 7 are non-NULL, this approach will
-    // waste time on SRVs 1-6.)
-    class SRVCache : angle::NonCopyable
+    // a large gap between used Views (e.g. if View 0 and 7 are non-NULL, this approach will
+    // waste time on Views 1-6.)
+    template <typename ViewType, typename DescType>
+    class ViewCache : angle::NonCopyable
     {
       public:
-        SRVCache() : mHighestUsedSRV(0) {}
+        ViewCache();
+        ~ViewCache();
 
-        void initialize(size_t size) { mCurrentSRVs.resize(size); }
+        void initialize(size_t size) { mCurrentViews.resize(size); }
 
-        size_t size() const { return mCurrentSRVs.size(); }
-        size_t highestUsed() const { return mHighestUsedSRV; }
+        size_t size() const { return mCurrentViews.size(); }
+        size_t highestUsed() const { return mHighestUsedView; }
 
-        const SRVRecord &operator[](size_t index) const { return mCurrentSRVs[index]; }
+        const ViewRecord<DescType> &operator[](size_t index) const { return mCurrentViews[index]; }
         void clear();
-        void update(size_t resourceIndex, ID3D11ShaderResourceView *srv);
+        void update(size_t resourceIndex, ViewType *view);
 
       private:
-        std::vector<SRVRecord> mCurrentSRVs;
-        size_t mHighestUsedSRV;
+        std::vector<ViewRecord<DescType>> mCurrentViews;
+        size_t mHighestUsedView;
     };
 
+    using SRVCache = ViewCache<ID3D11ShaderResourceView, D3D11_SHADER_RESOURCE_VIEW_DESC>;
+    using UAVCache = ViewCache<ID3D11UnorderedAccessView, D3D11_UNORDERED_ACCESS_VIEW_DESC>;
     SRVCache mCurVertexSRVs;
     SRVCache mCurPixelSRVs;
+    SRVCache mCurComputeSRVs;
+    UAVCache mCurComputeUAVs;
+    SRVCache *getSRVCache(gl::ShaderType shaderType);
 
     // A block of NULL pointers, cached so we don't re-allocate every draw call
     std::vector<ID3D11ShaderResourceView *> mNullSRVs;
+    std::vector<ID3D11UnorderedAccessView *> mNullUAVs;
 
     // Current translations of "Current-Value" data - owned by Context, not VertexArray.
     gl::AttributesMask mDirtyCurrentValueAttribs;
@@ -450,9 +499,9 @@ class StateManager11 final : angle::NonCopyable
 
     // Current applied vertex states.
     // TODO(jmadill): Figure out how to use ResourceSerial here.
-    std::array<ID3D11Buffer *, gl::MAX_VERTEX_ATTRIBS> mCurrentVertexBuffers;
-    std::array<UINT, gl::MAX_VERTEX_ATTRIBS> mCurrentVertexStrides;
-    std::array<UINT, gl::MAX_VERTEX_ATTRIBS> mCurrentVertexOffsets;
+    gl::AttribArray<ID3D11Buffer *> mCurrentVertexBuffers;
+    gl::AttribArray<UINT> mCurrentVertexStrides;
+    gl::AttribArray<UINT> mCurrentVertexOffsets;
     gl::RangeUI mDirtyVertexBufferRange;
 
     // Currently applied primitive topology
@@ -481,7 +530,7 @@ class StateManager11 final : angle::NonCopyable
     ID3D11Buffer *mAppliedIB;
     DXGI_FORMAT mAppliedIBFormat;
     unsigned int mAppliedIBOffset;
-    bool mAppliedIBChanged;
+    bool mIndexBufferIsDirty;
 
     // Vertex, index and input layouts
     VertexDataManager mVertexDataManager;
@@ -516,6 +565,24 @@ class StateManager11 final : angle::NonCopyable
     FragmentConstantBufferArray<ResourceSerial> mCurrentConstantBufferPS;
     FragmentConstantBufferArray<GLintptr> mCurrentConstantBufferPSOffset;
     FragmentConstantBufferArray<GLsizeiptr> mCurrentConstantBufferPSSize;
+
+    class OnConstantBufferDirtyReceiver : public OnBufferDataDirtyReceiver
+    {
+      public:
+        OnConstantBufferDirtyReceiver();
+        ~OnConstantBufferDirtyReceiver() override;
+
+        void signal(size_t messageID, const gl::Context *context) override;
+
+        void reset();
+        void bindVS(size_t index, Buffer11 *buffer);
+        void bindPS(size_t index, Buffer11 *buffer);
+
+      private:
+        std::vector<OnBufferDataDirtyBinding> mBindingsVS;
+        std::vector<OnBufferDataDirtyBinding> mBindingsPS;
+    };
+    OnConstantBufferDirtyReceiver mOnConstantBufferDirtyReceiver;
 
     // Currently applied transform feedback buffers
     Serial mAppliedTFSerial;

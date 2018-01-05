@@ -12,15 +12,21 @@
 #include <algorithm>
 
 #include "common/debug.h"
-#include "libANGLE/formatutils.h"
+#include "libANGLE/Buffer.h"
+#include "libANGLE/Context.h"
 #include "libANGLE/Framebuffer.h"
 #include "libANGLE/Program.h"
+#include "libANGLE/State.h"
+#include "libANGLE/VertexArray.h"
+#include "libANGLE/formatutils.h"
+#include "libANGLE/renderer/d3d/BufferD3D.h"
+#include "libANGLE/renderer/d3d/FramebufferD3D.h"
+#include "libANGLE/renderer/d3d/IndexBuffer.h"
+#include "libANGLE/renderer/d3d/d3d11/RenderTarget11.h"
+#include "libANGLE/renderer/d3d/d3d11/Renderer11.h"
 #include "libANGLE/renderer/d3d/d3d11/dxgi_support_table.h"
 #include "libANGLE/renderer/d3d/d3d11/formatutils11.h"
-#include "libANGLE/renderer/d3d/d3d11/Renderer11.h"
-#include "libANGLE/renderer/d3d/d3d11/RenderTarget11.h"
 #include "libANGLE/renderer/d3d/d3d11/texture_format_table.h"
-#include "libANGLE/renderer/d3d/FramebufferD3D.h"
 #include "libANGLE/renderer/driver_utils.h"
 #include "platform/Platform.h"
 #include "platform/WorkaroundsD3D.h"
@@ -45,6 +51,9 @@ static constexpr std::array<SamplePositionsArray, 5> kSamplePositions = {
        0.1875f, 0.375f,  0.625f,  0.8125f, 0.8125f, 0.6875f, 0.6875f, 0.1875f,
        0.375f,  0.875f,  0.5f,    0.0625f, 0.25f,   0.125f,  0.125f,  0.75f,
        0.0f,    0.5f,    0.9375f, 0.25f,   0.875f,  0.9375f, 0.0625f, 0.0f}}}};
+
+// TODO(xinghua.cao@intel.com): Get a more accurate limit.
+static D3D_FEATURE_LEVEL kMinimumFeatureLevelForES31 = D3D_FEATURE_LEVEL_11_0;
 
 // Helper functor for querying DXGI support. Saves passing the parameters repeatedly.
 class DXGISupportHelper : angle::NonCopyable
@@ -921,6 +930,34 @@ size_t GetMaximumComputeTextureUnits(D3D_FEATURE_LEVEL featureLevel)
     }
 }
 
+size_t GetMaximumImageUnits(D3D_FEATURE_LEVEL featureLevel)
+{
+    switch (featureLevel)
+    {
+        case D3D_FEATURE_LEVEL_11_1:
+        case D3D_FEATURE_LEVEL_11_0:
+            // TODO(xinghua.cao@intel.com): Get a more accurate limit. For now using
+            // the minimum requirement for GLES 3.1.
+            return 4;
+        default:
+            return 0;
+    }
+}
+
+size_t GetMaximumComputeImageUniforms(D3D_FEATURE_LEVEL featureLevel)
+{
+    switch (featureLevel)
+    {
+        case D3D_FEATURE_LEVEL_11_1:
+        case D3D_FEATURE_LEVEL_11_0:
+            // TODO(xinghua.cao@intel.com): Get a more accurate limit. For now using
+            // the minimum requirement for GLES 3.1.
+            return 4;
+        default:
+            return 0;
+    }
+}
+
 int GetMinimumTexelOffset(D3D_FEATURE_LEVEL featureLevel)
 {
     switch (featureLevel)
@@ -1174,6 +1211,11 @@ gl::Version GetMaximumClientVersion(D3D_FEATURE_LEVEL featureLevel)
     }
 }
 
+D3D_FEATURE_LEVEL GetMinimumFeatureLevelForES31()
+{
+    return kMinimumFeatureLevelForES31;
+}
+
 unsigned int GetMaxViewportAndScissorRectanglesPerPipeline(D3D_FEATURE_LEVEL featureLevel)
 {
     switch (featureLevel)
@@ -1206,8 +1248,34 @@ bool IsMultiviewSupported(D3D_FEATURE_LEVEL featureLevel)
     }
 }
 
-void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, const Renderer11DeviceCaps &renderer11DeviceCaps, gl::Caps *caps,
-                  gl::TextureCapsMap *textureCapsMap, gl::Extensions *extensions, gl::Limitations *limitations)
+unsigned int GetMaxSampleMaskWords(D3D_FEATURE_LEVEL featureLevel)
+{
+    switch (featureLevel)
+    {
+        // D3D10+ only allows 1 sample mask.
+        case D3D_FEATURE_LEVEL_11_1:
+        case D3D_FEATURE_LEVEL_11_0:
+        case D3D_FEATURE_LEVEL_10_1:
+        case D3D_FEATURE_LEVEL_10_0:
+            return 1u;
+        case D3D_FEATURE_LEVEL_9_3:
+        case D3D_FEATURE_LEVEL_9_2:
+        case D3D_FEATURE_LEVEL_9_1:
+            return 0u;
+        default:
+            UNREACHABLE();
+            return 0u;
+    }
+}
+
+void GenerateCaps(ID3D11Device *device,
+                  ID3D11DeviceContext *deviceContext,
+                  const Renderer11DeviceCaps &renderer11DeviceCaps,
+                  const angle::WorkaroundsD3D &workarounds,
+                  gl::Caps *caps,
+                  gl::TextureCapsMap *textureCapsMap,
+                  gl::Extensions *extensions,
+                  gl::Limitations *limitations)
 {
     D3D_FEATURE_LEVEL featureLevel = renderer11DeviceCaps.featureLevel;
     const gl::FormatSet &allFormats = gl::GetAllSizedInternalFormats();
@@ -1282,10 +1350,13 @@ void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, cons
 
     // Vertex shader limits
     caps->maxVertexAttributes = static_cast<GLuint>(GetMaximumVertexInputSlots(featureLevel));
-    caps->maxVertexUniformComponents =
-        static_cast<GLuint>(GetMaximumVertexUniformVectors(featureLevel)) * 4;
     caps->maxVertexUniformVectors =
         static_cast<GLuint>(GetMaximumVertexUniformVectors(featureLevel));
+    if (workarounds.skipConstantRegisterZero)
+    {
+        caps->maxVertexUniformVectors -= 1;
+    }
+    caps->maxVertexUniformComponents = caps->maxVertexUniformVectors * 4;
     caps->maxVertexUniformBlocks = static_cast<GLuint>(GetMaximumVertexUniformBlocks(featureLevel));
     caps->maxVertexOutputComponents =
         static_cast<GLuint>(GetMaximumVertexOutputVectors(featureLevel)) * 4;
@@ -1301,10 +1372,13 @@ void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, cons
     caps->maxVertexAttribStride = 2048;
 
     // Fragment shader limits
-    caps->maxFragmentUniformComponents =
-        static_cast<GLuint>(GetMaximumPixelUniformVectors(featureLevel)) * 4;
     caps->maxFragmentUniformVectors =
         static_cast<GLuint>(GetMaximumPixelUniformVectors(featureLevel));
+    if (workarounds.skipConstantRegisterZero)
+    {
+        caps->maxFragmentUniformVectors -= 1;
+    }
+    caps->maxFragmentUniformComponents = caps->maxFragmentUniformVectors * 4;
     caps->maxFragmentUniformBlocks =
         static_cast<GLuint>(GetMaximumPixelUniformBlocks(featureLevel));
     caps->maxFragmentInputComponents =
@@ -1320,10 +1394,17 @@ void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, cons
         static_cast<GLuint>(GetMaxComputeWorkGroupInvocations(featureLevel));
     caps->maxComputeUniformComponents =
         static_cast<GLuint>(GetMaximumComputeUniformVectors(featureLevel)) * 4;
+    if (workarounds.skipConstantRegisterZero)
+    {
+        caps->maxComputeUniformComponents -= 4;
+    }
     caps->maxComputeUniformBlocks =
         static_cast<GLuint>(GetMaximumComputeUniformBlocks(featureLevel));
     caps->maxComputeTextureImageUnits =
         static_cast<GLuint>(GetMaximumComputeTextureUnits(featureLevel));
+    caps->maxImageUnits = static_cast<GLuint>(GetMaximumImageUnits(featureLevel));
+    caps->maxComputeImageUniforms =
+        static_cast<GLuint>(GetMaximumComputeImageUniforms(featureLevel));
 
     // Aggregate shader limits
     caps->maxUniformBufferBindings = caps->maxVertexUniformBlocks + caps->maxFragmentUniformBlocks;
@@ -1366,6 +1447,9 @@ void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, cons
     caps->maxDepthTextureSamples = std::numeric_limits<GLint>::max();
     caps->maxIntegerSamples      = std::numeric_limits<GLint>::max();
 
+    // Sample mask words limits
+    caps->maxSampleMaskWords = GetMaxSampleMaskWords(featureLevel);
+
     // Framebuffer limits
     caps->maxFramebufferSamples = std::numeric_limits<GLint>::max();
     caps->maxFramebufferWidth =
@@ -1388,7 +1472,6 @@ void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, cons
     extensions->maxTextureAnisotropy = GetMaximumAnisotropy(featureLevel);
     extensions->occlusionQueryBoolean = GetOcclusionQuerySupport(featureLevel);
     extensions->fence = GetEventQuerySupport(featureLevel);
-    extensions->timerQuery = false; // Unimplemented
     extensions->disjointTimerQuery          = true;
     extensions->queryCounterBitsTimeElapsed = 64;
     extensions->queryCounterBitsTimestamp =
@@ -1581,7 +1664,7 @@ UINT8 ConvertColorMask(bool red, bool green, bool blue, bool alpha)
     return mask;
 }
 
-D3D11_CULL_MODE ConvertCullMode(bool cullEnabled, GLenum cullMode)
+D3D11_CULL_MODE ConvertCullMode(bool cullEnabled, gl::CullFaceMode cullMode)
 {
     D3D11_CULL_MODE cull = D3D11_CULL_NONE;
 
@@ -1589,13 +1672,13 @@ D3D11_CULL_MODE ConvertCullMode(bool cullEnabled, GLenum cullMode)
     {
         switch (cullMode)
         {
-            case GL_FRONT:
+            case gl::CullFaceMode::Front:
                 cull = D3D11_CULL_FRONT;
                 break;
-            case GL_BACK:
+            case gl::CullFaceMode::Back:
                 cull = D3D11_CULL_BACK;
                 break;
-            case GL_FRONT_AND_BACK:
+            case gl::CullFaceMode::FrontAndBack:
                 cull = D3D11_CULL_NONE;
                 break;
             default:
@@ -2026,6 +2109,78 @@ HRESULT SetDebugName(ID3D11DeviceChild *resource, const char *name)
 #endif
 }
 
+// Keep this in cpp file where it has visibility of Renderer11.h, otherwise calling
+// allocateResource is only compatible with Clang and MSVS, which support calling a
+// method on a forward declared class in a template.
+template <ResourceType ResourceT>
+gl::Error LazyResource<ResourceT>::resolveImpl(Renderer11 *renderer,
+                                               const GetDescType<ResourceT> &desc,
+                                               GetInitDataType<ResourceT> *initData,
+                                               const char *name)
+{
+    if (!mResource.valid())
+    {
+        ANGLE_TRY(renderer->allocateResource(desc, initData, &mResource));
+        mResource.setDebugName(name);
+    }
+    return gl::NoError();
+}
+
+template gl::Error LazyResource<ResourceType::BlendState>::resolveImpl(Renderer11 *renderer,
+                                                                       const D3D11_BLEND_DESC &desc,
+                                                                       void *initData,
+                                                                       const char *name);
+template gl::Error LazyResource<ResourceType::ComputeShader>::resolveImpl(Renderer11 *renderer,
+                                                                          const ShaderData &desc,
+                                                                          void *initData,
+                                                                          const char *name);
+template gl::Error LazyResource<ResourceType::GeometryShader>::resolveImpl(
+    Renderer11 *renderer,
+    const ShaderData &desc,
+    const std::vector<D3D11_SO_DECLARATION_ENTRY> *initData,
+    const char *name);
+template gl::Error LazyResource<ResourceType::InputLayout>::resolveImpl(
+    Renderer11 *renderer,
+    const InputElementArray &desc,
+    const ShaderData *initData,
+    const char *name);
+template gl::Error LazyResource<ResourceType::PixelShader>::resolveImpl(Renderer11 *renderer,
+                                                                        const ShaderData &desc,
+                                                                        void *initData,
+                                                                        const char *name);
+template gl::Error LazyResource<ResourceType::VertexShader>::resolveImpl(Renderer11 *renderer,
+                                                                         const ShaderData &desc,
+                                                                         void *initData,
+                                                                         const char *name);
+
+LazyInputLayout::LazyInputLayout(const D3D11_INPUT_ELEMENT_DESC *inputDesc,
+                                 size_t inputDescLen,
+                                 const BYTE *byteCode,
+                                 size_t byteCodeLen,
+                                 const char *debugName)
+    : mInputDesc(inputDesc, inputDescLen), mByteCode(byteCode, byteCodeLen), mDebugName(debugName)
+{
+}
+
+LazyInputLayout::~LazyInputLayout()
+{
+}
+
+gl::Error LazyInputLayout::resolve(Renderer11 *renderer)
+{
+    return resolveImpl(renderer, mInputDesc, &mByteCode, mDebugName);
+}
+
+LazyBlendState::LazyBlendState(const D3D11_BLEND_DESC &desc, const char *debugName)
+    : mDesc(desc), mDebugName(debugName)
+{
+}
+
+gl::Error LazyBlendState::resolve(Renderer11 *renderer)
+{
+    return resolveImpl(renderer, mDesc, nullptr, mDebugName);
+}
+
 angle::WorkaroundsD3D GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps,
                                           const DXGI_ADAPTER_DESC &adapterDesc)
 {
@@ -2059,27 +2214,24 @@ angle::WorkaroundsD3D GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps
 
     workarounds.flushAfterEndingTransformFeedback = IsNvidia(adapterDesc.VendorId);
     workarounds.getDimensionsIgnoresBaseLevel     = IsNvidia(adapterDesc.VendorId);
+    workarounds.skipConstantRegisterZero          = IsNvidia(adapterDesc.VendorId);
 
     if (IsIntel(adapterDesc.VendorId))
     {
+        IntelDriverVersion capsVersion = d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion);
+
         workarounds.preAddTexelFetchOffsets           = true;
         workarounds.useSystemMemoryForConstantBuffers = true;
-        workarounds.disableB5G6R5Support =
-            d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion) < IntelDriverVersion(4539);
+        workarounds.disableB5G6R5Support              = capsVersion < IntelDriverVersion(4539);
+        workarounds.addDummyTextureNoRenderTarget     = capsVersion < IntelDriverVersion(4815);
         if (IsSkylake(adapterDesc.DeviceId))
         {
-            workarounds.callClearTwice =
-                d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion) <
-                IntelDriverVersion(4771);
-            workarounds.emulateIsnanFloat =
-                d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion) <
-                IntelDriverVersion(4542);
+            workarounds.callClearTwice    = capsVersion < IntelDriverVersion(4771);
+            workarounds.emulateIsnanFloat = capsVersion < IntelDriverVersion(4542);
         }
         else if (IsBroadwell(adapterDesc.DeviceId) || IsHaswell(adapterDesc.DeviceId))
         {
-            workarounds.rewriteUnaryMinusOperator =
-                d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion) <
-                IntelDriverVersion(4624);
+            workarounds.rewriteUnaryMinusOperator = capsVersion < IntelDriverVersion(4624);
         }
     }
 
@@ -2205,6 +2357,90 @@ bool UsePresentPathFast(const Renderer11 *renderer,
 
     return (framebufferAttachment->type() == GL_FRAMEBUFFER_DEFAULT &&
             renderer->presentPathFastEnabled());
+}
+
+bool UsePrimitiveRestartWorkaround(bool primitiveRestartFixedIndexEnabled, GLenum type)
+{
+    // We should never have to deal with primitive restart workaround issue with GL_UNSIGNED_INT
+    // indices, since we restrict it via MAX_ELEMENT_INDEX.
+    return (!primitiveRestartFixedIndexEnabled && type == GL_UNSIGNED_SHORT);
+}
+
+bool IsStreamingIndexData(const gl::Context *context, GLenum srcType)
+{
+    const auto &glState = context->getGLState();
+    gl::Buffer *glBuffer = glState.getVertexArray()->getElementArrayBuffer().get();
+
+    // Case 1: the indices are passed by pointer, which forces the streaming of index data
+    if (glBuffer == nullptr)
+    {
+        return true;
+    }
+
+    bool primitiveRestartWorkaround =
+        UsePrimitiveRestartWorkaround(glState.isPrimitiveRestartEnabled(), srcType);
+
+    BufferD3D *buffer    = GetImplAs<BufferD3D>(glBuffer);
+    const GLenum dstType = (srcType == GL_UNSIGNED_INT || primitiveRestartWorkaround)
+                               ? GL_UNSIGNED_INT
+                               : GL_UNSIGNED_SHORT;
+
+    // Case 2a: the buffer can be used directly
+    if (buffer->supportsDirectBinding() && dstType == srcType)
+    {
+        return false;
+    }
+
+    // Case 2b: use a static translated copy or fall back to streaming
+    StaticIndexBufferInterface *staticBuffer = buffer->getStaticIndexBuffer();
+    if (staticBuffer == nullptr)
+    {
+        return true;
+    }
+
+    if ((staticBuffer->getBufferSize() == 0) || (staticBuffer->getIndexType() != dstType))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+IndexStorageType ClassifyIndexStorage(const gl::State &glState,
+                                      const gl::Buffer *elementArrayBuffer,
+                                      GLenum elementType,
+                                      GLenum destElementType,
+                                      unsigned int offset,
+                                      bool *needsTranslation)
+{
+    // No buffer bound means we are streaming from a client pointer.
+    if (!elementArrayBuffer || !IsOffsetAligned(elementType, offset))
+    {
+        *needsTranslation = true;
+        return IndexStorageType::Dynamic;
+    }
+
+    // The buffer can be used directly if the storage supports it and no translation needed.
+    BufferD3D *bufferD3D = GetImplAs<BufferD3D>(elementArrayBuffer);
+    if (bufferD3D->supportsDirectBinding() && destElementType == elementType)
+    {
+        *needsTranslation = false;
+        return IndexStorageType::Direct;
+    }
+
+    // Use a static copy when available.
+    StaticIndexBufferInterface *staticBuffer = bufferD3D->getStaticIndexBuffer();
+    if (staticBuffer != nullptr)
+    {
+        // Need to re-translate the static data if has never been used, or changed type.
+        *needsTranslation =
+            (staticBuffer->getBufferSize() == 0 || staticBuffer->getIndexType() != destElementType);
+        return IndexStorageType::Static;
+    }
+
+    // Static buffer not available, fall back to streaming.
+    *needsTranslation = true;
+    return IndexStorageType::Dynamic;
 }
 
 }  // namespace rx

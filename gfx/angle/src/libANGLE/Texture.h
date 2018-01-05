@@ -50,11 +50,12 @@ bool IsMipmapFiltered(const SamplerState &samplerState);
 struct ImageDesc final
 {
     ImageDesc();
-    ImageDesc(const Extents &size, const Format &format);
+    ImageDesc(const Extents &size, const Format &format, const InitState initState);
     ImageDesc(const Extents &size,
               const Format &format,
               const GLsizei samples,
-              const GLboolean fixedSampleLocations);
+              const bool fixedSampleLocations,
+              const InitState initState);
 
     ImageDesc(const ImageDesc &other) = default;
     ImageDesc &operator=(const ImageDesc &other) = default;
@@ -62,7 +63,10 @@ struct ImageDesc final
     Extents size;
     Format format;
     GLsizei samples;
-    GLboolean fixedSampleLocations;
+    bool fixedSampleLocations;
+
+    // Needed for robust resource initialization.
+    InitState initState;
 };
 
 struct SwizzleState final
@@ -87,6 +91,7 @@ struct SwizzleState final
 struct TextureState final : private angle::NonCopyable
 {
     TextureState(GLenum target);
+    ~TextureState();
 
     bool swizzleRequired() const;
     GLuint getEffectiveBaseLevel() const;
@@ -127,11 +132,13 @@ struct TextureState final : private angle::NonCopyable
     void setImageDescChain(GLuint baselevel,
                            GLuint maxLevel,
                            Extents baseSize,
-                           const Format &format);
+                           const Format &format,
+                           InitState initState);
     void setImageDescChainMultisample(Extents baseSize,
                                       const Format &format,
                                       GLsizei samples,
-                                      GLboolean fixedSampleLocations);
+                                      bool fixedSampleLocations,
+                                      InitState initState);
 
     void clearImageDesc(GLenum target, size_t level);
     void clearImageDescs();
@@ -154,7 +161,7 @@ struct TextureState final : private angle::NonCopyable
     GLenum mUsage;
 
     std::vector<ImageDesc> mImageDescs;
-
+    InitState mInitState;
 };
 
 bool operator==(const TextureState &a, const TextureState &b);
@@ -243,7 +250,7 @@ class Texture final : public egl::ImageSibling,
     size_t getHeight(GLenum target, size_t level) const;
     size_t getDepth(GLenum target, size_t level) const;
     GLsizei getSamples(GLenum target, size_t level) const;
-    GLboolean getFixedSampleLocations(GLenum target, size_t level) const;
+    bool getFixedSampleLocations(GLenum target, size_t level) const;
     const Format &getFormat(GLenum target, size_t level) const;
 
     // Returns the value called "q" in the GLES 3.0.4 spec section 3.8.10.
@@ -291,13 +298,13 @@ class Texture final : public egl::ImageSibling,
                     size_t level,
                     const Rectangle &sourceArea,
                     GLenum internalFormat,
-                    const Framebuffer *source);
+                    Framebuffer *source);
     Error copySubImage(const Context *context,
                        GLenum target,
                        size_t level,
                        const Offset &destOffset,
                        const Rectangle &sourceArea,
-                       const Framebuffer *source);
+                       Framebuffer *source);
 
     Error copyTexture(const Context *context,
                       GLenum target,
@@ -308,7 +315,7 @@ class Texture final : public egl::ImageSibling,
                       bool unpackFlipY,
                       bool unpackPremultiplyAlpha,
                       bool unpackUnmultiplyAlpha,
-                      const Texture *source);
+                      Texture *source);
     Error copySubTexture(const Context *context,
                          GLenum target,
                          size_t level,
@@ -318,7 +325,7 @@ class Texture final : public egl::ImageSibling,
                          bool unpackFlipY,
                          bool unpackPremultiplyAlpha,
                          bool unpackUnmultiplyAlpha,
-                         const Texture *source);
+                         Texture *source);
     Error copyCompressedTexture(const Context *context, const Texture *source);
 
     Error setStorage(const Context *context,
@@ -332,7 +339,7 @@ class Texture final : public egl::ImageSibling,
                                 GLsizei samples,
                                 GLint internalformat,
                                 const Extents &size,
-                                GLboolean fixedSampleLocations);
+                                bool fixedSampleLocations);
 
     Error setEGLImageTarget(const Context *context, GLenum target, egl::Image *imageTarget);
 
@@ -341,7 +348,7 @@ class Texture final : public egl::ImageSibling,
     egl::Surface *getBoundSurface() const;
     egl::Stream *getBoundStream() const;
 
-    void signalDirty() const;
+    void signalDirty(InitState initState) const;
 
     bool isSamplerComplete(const Context *context, const Sampler *optionalSampler);
 
@@ -355,6 +362,12 @@ class Texture final : public egl::ImageSibling,
     void onAttach(const Context *context) override;
     void onDetach(const Context *context) override;
     GLuint getId() const override;
+
+    // Needed for robust resource init.
+    Error ensureInitialized(const Context *context);
+    InitState initState(const ImageIndex &imageIndex) const override;
+    InitState initState() const;
+    void setInitState(const ImageIndex &imageIndex, InitState initState) override;
 
     enum DirtyBitType
     {
@@ -407,14 +420,18 @@ class Texture final : public egl::ImageSibling,
     Error releaseImageFromStream(const Context *context);
 
     void invalidateCompletenessCache() const;
+    Error releaseTexImageInternal(const Context *context);
+
+    Error ensureSubImageInitialized(const Context *context,
+                                    GLenum target,
+                                    size_t level,
+                                    const gl::Box &area);
 
     TextureState mState;
     DirtyBits mDirtyBits;
     rx::TextureImpl *mTexture;
 
     std::string mLabel;
-
-    Error releaseTexImageInternal(const Context *context);
 
     egl::Surface *mBoundSurface;
     egl::Stream *mBoundStream;

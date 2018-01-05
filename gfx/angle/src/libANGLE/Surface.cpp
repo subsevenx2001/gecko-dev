@@ -12,8 +12,6 @@
 
 #include <EGL/eglext.h>
 
-#include <iostream>
-
 #include "libANGLE/Config.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/Display.h"
@@ -26,14 +24,14 @@
 namespace egl
 {
 
-SurfaceState::SurfaceState(const egl::Config *configIn)
-    : defaultFramebuffer(nullptr), config(configIn)
+SurfaceState::SurfaceState(const egl::Config *configIn, const AttributeMap &attributesIn)
+    : defaultFramebuffer(nullptr), config(configIn), attributes(attributesIn)
 {
 }
 
 Surface::Surface(EGLint surfaceType, const egl::Config *config, const AttributeMap &attributes)
     : FramebufferAttachmentObject(),
-      mState(config),
+      mState(config, attributes),
       mImplementation(nullptr),
       mCurrentCount(0),
       mDestroyed(false),
@@ -59,7 +57,7 @@ Surface::Surface(EGLint surfaceType, const egl::Config *config, const AttributeM
       mSwapBehavior(EGL_NONE),
       mOrientation(0),
       mTexture(),
-      mBackFormat(config->renderTargetFormat),
+      mColorFormat(config->renderTargetFormat),
       mDSFormat(config->depthStencilFormat)
 {
     mPostSubBufferRequested = (attributes.get(EGL_POST_SUB_BUFFER_SUPPORTED_NV, EGL_FALSE) == EGL_TRUE);
@@ -80,6 +78,9 @@ Surface::Surface(EGLint surfaceType, const egl::Config *config, const AttributeM
 
     mDirectComposition = (attributes.get(EGL_DIRECT_COMPOSITION_ANGLE, EGL_FALSE) == EGL_TRUE);
 
+    mRobustResourceInitialization =
+        (attributes.get(EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE, EGL_FALSE) == EGL_TRUE);
+
     mFixedSize = (attributes.get(EGL_FIXED_SIZE_ANGLE, EGL_FALSE) == EGL_TRUE);
     if (mFixedSize)
     {
@@ -98,6 +99,11 @@ Surface::Surface(EGLint surfaceType, const egl::Config *config, const AttributeM
 
 Surface::~Surface()
 {
+}
+
+rx::FramebufferAttachmentObjectImpl *Surface::getAttachmentImpl() const
+{
+    return mImplementation;
 }
 
 Error Surface::destroyImpl(const Display *display)
@@ -379,7 +385,7 @@ gl::Extents Surface::getAttachmentSize(const gl::ImageIndex & /*target*/) const
 
 const gl::Format &Surface::getAttachmentFormat(GLenum binding, const gl::ImageIndex &target) const
 {
-    return (binding == GL_BACK ? mBackFormat : mDSFormat);
+    return (binding == GL_BACK ? mColorFormat : mDSFormat);
 }
 
 GLsizei Surface::getAttachmentSamples(const gl::ImageIndex &target) const
@@ -396,6 +402,17 @@ GLuint Surface::getId() const
 gl::Framebuffer *Surface::createDefaultFramebuffer(const Display *display)
 {
     return new gl::Framebuffer(display, this);
+}
+
+gl::InitState Surface::initState(const gl::ImageIndex & /*imageIndex*/) const
+{
+    // TODO(jmadill): Lazy surface init.
+    return gl::InitState::Initialized;
+}
+
+void Surface::setInitState(const gl::ImageIndex & /*imageIndex*/, gl::InitState /*initState*/)
+{
+    // No-op.
 }
 
 WindowSurface::WindowSurface(rx::EGLImplFactory *implFactory,
@@ -428,6 +445,13 @@ PbufferSurface::PbufferSurface(rx::EGLImplFactory *implFactory,
 {
     mImplementation =
         implFactory->createPbufferFromClientBuffer(mState, buftype, clientBuffer, attribs);
+
+    if (buftype == EGL_IOSURFACE_ANGLE)
+    {
+        GLenum internalFormat = static_cast<GLenum>(attribs.get(EGL_TEXTURE_INTERNAL_FORMAT_ANGLE));
+        GLenum type           = static_cast<GLenum>(attribs.get(EGL_TEXTURE_TYPE_ANGLE));
+        mColorFormat          = gl::Format(internalFormat, type);
+    }
 }
 
 PbufferSurface::~PbufferSurface()
@@ -445,6 +469,21 @@ PixmapSurface::PixmapSurface(rx::EGLImplFactory *implFactory,
 
 PixmapSurface::~PixmapSurface()
 {
+}
+
+// SurfaceDeleter implementation.
+
+SurfaceDeleter::SurfaceDeleter(const Display *display) : mDisplay(display)
+{
+}
+
+SurfaceDeleter::~SurfaceDeleter()
+{
+}
+
+void SurfaceDeleter::operator()(Surface *surface)
+{
+    ANGLE_SWALLOW_ERR(surface->onDestroy(mDisplay));
 }
 
 }  // namespace egl

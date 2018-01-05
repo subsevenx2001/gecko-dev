@@ -126,6 +126,8 @@ class BufferManager : public TypedResourceManager<Buffer, HandleAllocator, Buffe
 class ShaderProgramManager : public ResourceManagerBase<HandleAllocator>
 {
   public:
+    ShaderProgramManager();
+
     GLuint createShader(rx::GLImplFactory *factory,
                         const Limitations &rendererLimitations,
                         GLenum type);
@@ -164,6 +166,8 @@ class TextureManager : public TypedResourceManager<Texture, HandleAllocator, Tex
 
     static Texture *AllocateNewObject(rx::GLImplFactory *factory, GLuint handle, GLenum target);
     static void DeleteObject(const Context *context, Texture *texture);
+
+    void enableHandleAllocatorLogging();
 
   protected:
     ~TextureManager() override {}
@@ -222,6 +226,8 @@ class SyncManager : public TypedResourceManager<Sync, HandleAllocator, SyncManag
 class PathManager : public ResourceManagerBase<HandleRangeAllocator>
 {
   public:
+    PathManager();
+
     ErrorOrResult<GLuint> createPaths(rx::GLImplFactory *factory, GLsizei range);
     void deletePaths(GLuint first, GLsizei range);
     Path *getPath(GLuint handle) const;

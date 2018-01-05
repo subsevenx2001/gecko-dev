@@ -7,6 +7,7 @@
 //   Various tests related for Frambuffers.
 //
 
+#include "platform/WorkaroundsD3D.h"
 #include "test_utils/ANGLETest.h"
 #include "test_utils/gl_raii.h"
 
@@ -517,6 +518,25 @@ TEST_P(FramebufferTest_ES3, MultisampleDepthOnly)
     EXPECT_GE(samples, 2);
 }
 
+// Check that we only compare width and height of attachments, not depth.
+TEST_P(FramebufferTest_ES3, AttachmentWith3DLayers)
+{
+    GLTexture texA;
+    glBindTexture(GL_TEXTURE_2D, texA);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 4, 4, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    GLTexture texB;
+    glBindTexture(GL_TEXTURE_3D, texB);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, 4, 4, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    GLFramebuffer framebuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texA, 0);
+    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, texB, 0, 0);
+    ASSERT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    EXPECT_GL_NO_ERROR();
+}
+
 ANGLE_INSTANTIATE_TEST(FramebufferTest_ES3, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
 
 class FramebufferTest_ES31 : public ANGLETest
@@ -670,30 +690,52 @@ TEST_P(FramebufferTest_ES31, IncompleteMultisampleFixedSampleLocationsTex)
 // object's default width and height.
 TEST_P(FramebufferTest_ES31, RenderingLimitToDefaultFBOSizeWithNoAttachments)
 {
-    // TODO(yizhou): Investigate why this case fail on Intel GPU.
-    ANGLE_SKIP_TEST_IF(IsIntel() && IsD3D11());
+    // anglebug.com/2253
+    ANGLE_SKIP_TEST_IF(IsLinux() && IsAMD() && IsDesktopOpenGL());
 
-    const std::string &vertexShader =
-        "#version 310 es\n"
-        "in layout(location = 0) highp vec2 a_position;\n\n"
-        "void main()\n"
-        "{\n"
-        "	gl_Position = vec4(a_position, 0.0, 1.0);\n"
-        "}\n";
-    const std::string &fragShader =
-        "#version 310 es\n"
-        "uniform layout(location = 0) highp ivec2 u_expectedSize;\n"
-        "out layout(location = 0) mediump vec4 f_color;\n\n"
-        "void main()\n"
-        "{\n"
-        "	if (ivec2(gl_FragCoord.xy) != u_expectedSize) discard;\n"
-        "	f_color = vec4(1.0, 0.5, 0.25, 1.0);\n"
-        "}\n";
+    const std::string &vertexShader1 =
+        R"(#version 310 es
+        in layout(location = 0) highp vec2 a_position;
+        void main()
+        {
+           gl_Position = vec4(a_position, 0.0, 1.0);
+        })";
 
-    GLuint program = CompileProgram(vertexShader, fragShader);
-    ASSERT_NE(program, 0u);
+    const std::string &fragShader1 =
+        R"(#version 310 es
+        uniform layout(location = 0) highp ivec2 u_expectedSize;
+        out layout(location = 5) mediump vec4 f_color;
+        void main()
+        {
+           if (ivec2(gl_FragCoord.xy) != u_expectedSize) discard;
+           f_color = vec4(1.0, 0.5, 0.25, 1.0);
+        })";
 
-    glUseProgram(program);
+    const std::string &vertexShader2 =
+        R"(#version 310 es
+        in layout(location = 0) highp vec2 a_position;
+        void main()
+        {
+           gl_Position = vec4(a_position, 0.0, 1.0);
+        })";
+
+    const std::string &fragShader2 =
+        R"(#version 310 es
+        uniform layout(location = 0) highp ivec2 u_expectedSize;
+        out layout(location = 2) mediump vec4 f_color;
+        void main()
+        {
+           if (ivec2(gl_FragCoord.xy) != u_expectedSize) discard;
+           f_color = vec4(1.0, 0.5, 0.25, 1.0);
+        })";
+
+    GLuint program1 = CompileProgram(vertexShader1, fragShader1);
+    ASSERT_NE(program1, 0u);
+
+    GLuint program2 = CompileProgram(vertexShader2, fragShader2);
+    ASSERT_NE(program2, 0u);
+
+    glUseProgram(program1);
 
     GLFramebuffer mFramebuffer;
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, mFramebuffer);
@@ -723,24 +765,33 @@ TEST_P(FramebufferTest_ES31, RenderingLimitToDefaultFBOSizeWithNoAttachments)
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, false, 0, 0);
+    EXPECT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(GL_FRAMEBUFFER));
 
     validateSamplePass(query, passedCount, defaultWidth, defaultHeight);
 
+    glUseProgram(program2);
+    validateSamplePass(query, passedCount, defaultWidth, defaultHeight);
+
+    glUseProgram(program1);
     // If fbo has attachments, the rendering size should be the same as its attachment.
     GLTexture mTexture;
     GLuint width  = 2;
     GLuint height = 2;
     glBindTexture(GL_TEXTURE_2D, mTexture.get());
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture.get(),
+
+    const GLenum bufs[] = {GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_COLOR_ATTACHMENT5};
+
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT5, GL_TEXTURE_2D, mTexture.get(),
                            0);
     EXPECT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    glDrawBuffers(6, bufs);
 
     validateSamplePass(query, passedCount, width, height);
 
     // If fbo's attachment has been removed, the rendering size should be the same as framebuffer
     // default size.
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT5, 0, 0, 0);
     EXPECT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(GL_FRAMEBUFFER));
 
     validateSamplePass(query, passedCount, defaultWidth, defaultHeight);
@@ -755,3 +806,39 @@ TEST_P(FramebufferTest_ES31, RenderingLimitToDefaultFBOSizeWithNoAttachments)
 }
 
 ANGLE_INSTANTIATE_TEST(FramebufferTest_ES31, ES31_D3D11(), ES31_OPENGL(), ES31_OPENGLES());
+
+class AddDummyTextureNoRenderTargetTest : public ANGLETest
+{
+  public:
+    AddDummyTextureNoRenderTargetTest()
+    {
+        setWindowWidth(512);
+        setWindowHeight(512);
+        setConfigRedBits(8);
+        setConfigGreenBits(8);
+        setConfigBlueBits(8);
+        setConfigAlphaBits(8);
+    }
+
+    void overrideWorkaroundsD3D(WorkaroundsD3D *workarounds) override
+    {
+        workarounds->addDummyTextureNoRenderTarget = true;
+    }
+};
+
+// Test to verify workaround succeeds when no program outputs exist http://anglebug.com/2283
+TEST_P(AddDummyTextureNoRenderTargetTest, NoProgramOutputWorkaround)
+{
+    const std::string &vShader = "void main() {}";
+    const std::string &fShader = "void main() {}";
+
+    ANGLE_GL_PROGRAM(drawProgram, vShader, fShader);
+
+    glUseProgram(drawProgram);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    ASSERT_GL_NO_ERROR();
+}
+
+ANGLE_INSTANTIATE_TEST(AddDummyTextureNoRenderTargetTest, ES2_D3D11());

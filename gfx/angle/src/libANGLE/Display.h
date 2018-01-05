@@ -45,6 +45,9 @@ using SurfaceSet = std::set<Surface *>;
 
 struct DisplayState final : private angle::NonCopyable
 {
+    DisplayState();
+    ~DisplayState();
+
     SurfaceSet surfaceSet;
 };
 
@@ -157,8 +160,6 @@ class Display final : angle::NonCopyable
     gl::Version getMaxSupportedESVersion() const;
 
     const DisplayState &getState() const { return mState; }
-
-    bool isRobustResourceInitEnabled() const;
 
     gl::Context *getProxyContext() const { return mProxyContext.get(); }
 

@@ -13,11 +13,12 @@ namespace sh
 namespace
 {
 
-void OutputFunction(TInfoSinkBase &out, const char *str, TFunctionSymbolInfo *info)
+void OutputFunction(TInfoSinkBase &out, const char *str, const TFunction *func)
 {
-    const char *internal = info->getNameObj().isInternal() ? " (internal function)" : "";
-    out << str << internal << ": " << info->getNameObj().getString() << " (symbol id "
-        << info->getId().get() << ")";
+    const char *internal =
+        (func->symbolType() == SymbolType::AngleInternal) ? " (internal function)" : "";
+    out << str << internal << ": " << func->name() << " (symbol id " << func->uniqueId().get()
+        << ")";
 }
 
 // Two purposes:
@@ -80,8 +81,15 @@ void TOutputTraverser::visitSymbol(TIntermSymbol *node)
 {
     OutputTreeText(mOut, node, mDepth);
 
-    mOut << "'" << node->getSymbol() << "' ";
-    mOut << "(symbol id " << node->getId() << ") ";
+    if (node->variable().symbolType() == SymbolType::Empty)
+    {
+        mOut << "''";
+    }
+    else
+    {
+        mOut << "'" << node->getName() << "' ";
+    }
+    mOut << "(symbol id " << node->uniqueId().get() << ") ";
     mOut << "(" << node->getCompleteString() << ")";
     mOut << "\n";
 }
@@ -356,7 +364,7 @@ bool TOutputTraverser::visitInvariantDeclaration(Visit visit, TIntermInvariantDe
 bool TOutputTraverser::visitFunctionPrototype(Visit visit, TIntermFunctionPrototype *node)
 {
     OutputTreeText(mOut, node, mDepth);
-    OutputFunction(mOut, "Function Prototype", node->getFunctionSymbolInfo());
+    OutputFunction(mOut, "Function Prototype", node->getFunction());
     mOut << " (" << node->getCompleteString() << ")";
     mOut << "\n";
 
@@ -379,14 +387,14 @@ bool TOutputTraverser::visitAggregate(Visit visit, TIntermAggregate *node)
     switch (node->getOp())
     {
         case EOpCallFunctionInAST:
-            OutputFunction(mOut, "Call an user-defined function", node->getFunctionSymbolInfo());
+            OutputFunction(mOut, "Call an user-defined function", node->getFunction());
             break;
         case EOpCallInternalRawFunction:
             OutputFunction(mOut, "Call an internal function with raw implementation",
-                           node->getFunctionSymbolInfo());
+                           node->getFunction());
             break;
         case EOpCallBuiltInFunction:
-            OutputFunction(mOut, "Call a built-in function", node->getFunctionSymbolInfo());
+            OutputFunction(mOut, "Call a built-in function", node->getFunction());
             break;
 
         case EOpConstruct:

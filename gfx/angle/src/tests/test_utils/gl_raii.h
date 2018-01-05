@@ -73,6 +73,7 @@ using GLRenderbuffer      = GLWrapper<glGenRenderbuffers, glDeleteRenderbuffers>
 using GLSampler           = GLWrapper<glGenSamplers, glDeleteSamplers>;
 using GLTransformFeedback = GLWrapper<glGenTransformFeedbacks, glDeleteTransformFeedbacks>;
 using GLProgramPipeline   = GLWrapper<glGenProgramPipelines, glDeleteProgramPipelines>;
+using GLQueryEXT          = GLWrapper<glGenQueriesEXT, glDeleteQueriesEXT>;
 
 // Don't use GLProgram directly, use ANGLE_GL_PROGRAM.
 namespace priv
@@ -92,6 +93,15 @@ class GLProgram
     void makeRaster(const std::string &vertexShader, const std::string &fragmentShader)
     {
         mHandle = CompileProgram(vertexShader, fragmentShader);
+    }
+
+    void makeRasterWithTransformFeedback(const std::string &vertexShader,
+                                         const std::string &fragmentShader,
+                                         const std::vector<std::string> &tfVaryings,
+                                         GLenum bufferMode)
+    {
+        mHandle = CompileProgramWithTransformFeedback(vertexShader, fragmentShader, tfVaryings,
+                                                      bufferMode);
     }
 
     void makeBinaryOES(const std::vector<uint8_t> &binary, GLenum binaryFormat)
@@ -122,6 +132,11 @@ class GLProgram
 #define ANGLE_GL_PROGRAM(name, vertex, fragment) \
     priv::GLProgram name;                        \
     name.makeRaster(vertex, fragment);           \
+    ASSERT_TRUE(name.valid());
+
+#define ANGLE_GL_PROGRAM_TRANSFORM_FEEDBACK(name, vertex, fragment, tfVaryings, bufferMode) \
+    priv::GLProgram name;                                                                   \
+    name.makeRasterWithTransformFeedback(vertex, fragment, tfVaryings, bufferMode);         \
     ASSERT_TRUE(name.valid());
 
 #define ANGLE_GL_COMPUTE_PROGRAM(name, compute) \

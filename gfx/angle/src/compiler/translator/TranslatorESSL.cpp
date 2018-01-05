@@ -8,7 +8,6 @@
 
 #include "compiler/translator/BuiltInFunctionEmulatorGLSL.h"
 #include "compiler/translator/EmulatePrecision.h"
-#include "compiler/translator/PrunePureLiteralStatements.h"
 #include "compiler/translator/RecordConstantPrecision.h"
 #include "compiler/translator/OutputESSL.h"
 #include "angle_gl.h"
@@ -30,12 +29,10 @@ void TranslatorESSL::initBuiltInFunctionEmulator(BuiltInFunctionEmulator *emu,
     }
 }
 
-void TranslatorESSL::translate(TIntermBlock *root, ShCompileOptions compileOptions)
+void TranslatorESSL::translate(TIntermBlock *root,
+                               ShCompileOptions compileOptions,
+                               PerformanceDiagnostics * /*perfDiagnostics*/)
 {
-    // The ESSL output doesn't define a default precision for float, so float literal statements
-    // end up with no precision which is invalid ESSL.
-    PrunePureLiteralStatements(root);
-
     TInfoSinkBase &sink = getInfoSink().obj;
 
     int shaderVer = getShaderVersion();
@@ -95,7 +92,7 @@ void TranslatorESSL::translate(TIntermBlock *root, ShCompileOptions compileOptio
              << ", local_size_z=" << localSize[2] << ") in;\n";
     }
 
-    if (getShaderType() == GL_GEOMETRY_SHADER_OES)
+    if (getShaderType() == GL_GEOMETRY_SHADER_EXT)
     {
         WriteGeometryShaderLayoutQualifiers(
             sink, getGeometryShaderInputPrimitiveType(), getGeometryShaderInvocations(),
@@ -106,13 +103,6 @@ void TranslatorESSL::translate(TIntermBlock *root, ShCompileOptions compileOptio
     TOutputESSL outputESSL(sink, getArrayIndexClampingStrategy(), getHashFunction(), getNameMap(),
                            &getSymbolTable(), getShaderType(), shaderVer, precisionEmulation,
                            compileOptions);
-
-    if (compileOptions & SH_TRANSLATE_VIEWID_OVR_TO_UNIFORM)
-    {
-        TName uniformName(TString("ViewID_OVR"));
-        uniformName.setInternal(true);
-        sink << "highp uniform int " << outputESSL.hashName(uniformName) << ";\n";
-    }
 
     root->traverse(&outputESSL);
 }
@@ -128,9 +118,8 @@ void TranslatorESSL::writeExtensionBehavior(ShCompileOptions compileOptions)
     TInfoSinkBase &sink                   = getInfoSink().obj;
     const TExtensionBehavior &extBehavior = getExtensionBehavior();
     const bool isMultiviewExtEmulated =
-        (compileOptions &
-         (SH_TRANSLATE_VIEWID_OVR_TO_UNIFORM | SH_INITIALIZE_BUILTINS_FOR_INSTANCED_MULTIVIEW |
-          SH_SELECT_VIEW_IN_NV_GLSL_VERTEX_SHADER)) != 0u;
+        (compileOptions & (SH_INITIALIZE_BUILTINS_FOR_INSTANCED_MULTIVIEW |
+                           SH_SELECT_VIEW_IN_NV_GLSL_VERTEX_SHADER)) != 0u;
     for (TExtensionBehavior::const_iterator iter = extBehavior.begin(); iter != extBehavior.end();
          ++iter)
     {
@@ -159,13 +148,13 @@ void TranslatorESSL::writeExtensionBehavior(ShCompileOptions compileOptions)
                     sink << "#extension GL_NV_viewport_array2 : require\n";
                 }
             }
-            else if (iter->first == TExtension::OES_geometry_shader)
+            else if (iter->first == TExtension::EXT_geometry_shader)
             {
-                sink << "#ifdef GL_OES_geometry_shader\n"
-                     << "#extension GL_OES_geometry_shader : " << GetBehaviorString(iter->second)
-                     << "\n"
-                     << "#elif defined GL_EXT_geometry_shader\n"
+                sink << "#ifdef GL_EXT_geometry_shader\n"
                      << "#extension GL_EXT_geometry_shader : " << GetBehaviorString(iter->second)
+                     << "\n"
+                     << "#elif defined GL_OES_geometry_shader\n"
+                     << "#extension GL_OES_geometry_shader : " << GetBehaviorString(iter->second)
                      << "\n";
                 if (iter->second == EBhRequire)
                 {
