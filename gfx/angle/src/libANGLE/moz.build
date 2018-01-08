@@ -122,6 +122,7 @@ UNIFIED_SOURCES += [
     '../compiler/translator/ValidateVaryingLocations.cpp',
     '../compiler/translator/VersionGLSL.cpp',
     '../third_party/compiler/ArrayBoundsClamper.cpp',
+    '../third_party/systeminfo/SystemInfo.cpp',
     'angletypes.cpp',
     'AttributeMap.cpp',
     'Buffer.cpp',
@@ -292,7 +293,6 @@ SOURCES += [
     '../image_util/imageformats.cpp',
     '../image_util/loadimage.cpp',
     '../image_util/loadimage_etc.cpp',
-    '../third_party/systeminfo/SystemInfo.cpp',
     'Display.cpp',
     'renderer/d3d/DisplayD3D.cpp',
     'renderer/d3d/HLSLCompiler.cpp',
@@ -331,11 +331,11 @@ if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
         'renderer/d3d/d3d11/Trim11.cpp',
         'renderer/d3d/d3d11/VertexArray11.cpp',
         'renderer/d3d/d3d11/VertexBuffer11.cpp',
-        'renderer/d3d/d3d11/win32/NativeWindow11Win32.cpp',
     ]
 if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
     SOURCES += [
         'renderer/d3d/d3d11/SwapChain11.cpp',
+        'renderer/d3d/d3d11/win32/NativeWindow11Win32.cpp',
     ]
 
 
