@@ -18,7 +18,7 @@ UNIFIED_SOURCES += [
     '../common/string_utils.cpp',
     '../common/system_utils_win.cpp',
     '../common/third_party/base/anglebase/sha1.cc',
-    '../common/third_party/murmurhash/MurmurHash3.cpp',
+    '../common/third_party/smhasher/src/PMurHash.cpp',
     '../common/tls.cpp',
     '../common/uniform_type_info_autogen.cpp',
     '../common/utilities.cpp',
@@ -32,11 +32,11 @@ UNIFIED_SOURCES += [
     '../compiler/preprocessor/MacroExpander.cpp',
     '../compiler/preprocessor/Preprocessor.cpp',
     '../compiler/preprocessor/Token.cpp',
+    '../compiler/preprocessor/Tokenizer.cpp',
     '../compiler/translator/AddAndTrueToLoopCondition.cpp',
     '../compiler/translator/AddDefaultReturnStatements.cpp',
     '../compiler/translator/ArrayReturnValueToOutParameter.cpp',
     '../compiler/translator/ASTMetadataHLSL.cpp',
-    '../compiler/translator/blocklayout.cpp',
     '../compiler/translator/blocklayoutHLSL.cpp',
     '../compiler/translator/BreakVariableAliasingInInnerLoops.cpp',
     '../compiler/translator/BuiltInFunctionEmulator.cpp',
@@ -61,6 +61,7 @@ UNIFIED_SOURCES += [
     '../compiler/translator/FindMain.cpp',
     '../compiler/translator/FindSymbolNode.cpp',
     '../compiler/translator/FlagStd140Structs.cpp',
+    '../compiler/translator/glslang_tab.cpp',
     '../compiler/translator/HashNames.cpp',
     '../compiler/translator/InfoSink.cpp',
     '../compiler/translator/Initialize.cpp',
@@ -119,10 +120,8 @@ UNIFIED_SOURCES += [
     '../compiler/translator/ValidateMaxParameters.cpp',
     '../compiler/translator/ValidateSwitch.cpp',
     '../compiler/translator/ValidateVaryingLocations.cpp',
-    '../compiler/translator/VariablePacker.cpp',
     '../compiler/translator/VersionGLSL.cpp',
     '../third_party/compiler/ArrayBoundsClamper.cpp',
-    '../third_party/systeminfo/SystemInfo.cpp',
     'angletypes.cpp',
     'AttributeMap.cpp',
     'Buffer.cpp',
@@ -279,20 +278,21 @@ UNIFIED_SOURCES += [
     'WorkerThread.cpp',
 ]
 SOURCES += [
-    '../compiler/preprocessor/Tokenizer.cpp',
+    '../compiler/translator/blocklayout.cpp',
     '../compiler/translator/EmulateGLFragColorBroadcast.cpp',
     '../compiler/translator/glslang_lex.cpp',
-    '../compiler/translator/glslang_tab.cpp',
     '../compiler/translator/RewriteTexelFetchOffset.cpp',
     '../compiler/translator/RewriteUnaryMinusOperatorInt.cpp',
     '../compiler/translator/ShaderLang.cpp',
     '../compiler/translator/ValidateOutputs.cpp',
+    '../compiler/translator/VariablePacker.cpp',
     '../gpu_info_util/SystemInfo.cpp',
     '../gpu_info_util/SystemInfo_win.cpp',
     '../image_util/copyimage.cpp',
     '../image_util/imageformats.cpp',
     '../image_util/loadimage.cpp',
     '../image_util/loadimage_etc.cpp',
+    '../third_party/systeminfo/SystemInfo.cpp',
     'Display.cpp',
     'renderer/d3d/DisplayD3D.cpp',
     'renderer/d3d/HLSLCompiler.cpp',
@@ -331,14 +331,13 @@ if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
         'renderer/d3d/d3d11/Trim11.cpp',
         'renderer/d3d/d3d11/VertexArray11.cpp',
         'renderer/d3d/d3d11/VertexBuffer11.cpp',
+        'renderer/d3d/d3d11/win32/NativeWindow11Win32.cpp',
     ]
 if CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
     SOURCES += [
         'renderer/d3d/d3d11/SwapChain11.cpp',
-        'renderer/d3d/d3d11/win32/NativeWindow11Win32.cpp',
     ]
 
-CXXFLAGS += CONFIG['SSE2_FLAGS']
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += [
@@ -347,6 +346,7 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
         '-Wno-sign-compare',
         '-Wno-unknown-pragmas',
         '-Wno-unreachable-code',
+        '-Wno-missing-braces',
     ]
     if CONFIG['CC_TYPE'] == 'clang':
         CXXFLAGS += [
@@ -359,12 +359,8 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
             '-Wno-shadow-local',
         ]
 
-if CONFIG['CC_TYPE'] == 'msvc':
-    CXXFLAGS += [
-        '-wd4018', # '>' : signed/unsigned mismatch
-        '-wd4530', # C++ exception handler used, without /EHsc
-        '-wd5038', # C5038: initializer list order warnings
-    ]
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+    CXXFLAGS += ['-wd5038'] # C5038: initializer list order warnings
 
 if CONFIG['MOZ_DIRECTX_SDK_PATH'] and not CONFIG['MOZ_HAS_WINSDK_WITH_D3D']:
     LOCAL_INCLUDES += ['%' + '%s/include/' % CONFIG['MOZ_DIRECTX_SDK_PATH']]
@@ -390,7 +386,7 @@ DEFINES['EGLAPI'] = ""
 
 
 
-LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/base', '../../src/third_party/khronos', ]
+LOCAL_INCLUDES += [ '../../include', '../../src', '../../src/common/third_party/base', '../../src/common/third_party/smhasher', '../../src/third_party/khronos' ]
 
 DEFINES['LIBANGLE_IMPLEMENTATION'] = "1"
 DEFINES['ANGLE_ENABLE_HLSL'] = "1"

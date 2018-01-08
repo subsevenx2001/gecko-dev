@@ -371,9 +371,7 @@ bool FramebufferState::attachmentsHaveSameDimensions() const
             return false;
         }
 
-        const Extents &size = attachment.getSize();
-        return size.width != attachmentSize.value().width ||
-            size.height != attachmentSize.value().height;
+        return (attachment.getSize() != attachmentSize.value());
     };
 
     for (const auto &attachment : mColorAttachments)

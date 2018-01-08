@@ -2679,7 +2679,7 @@ bool ValidateCompressedTexImage2D(Context *context,
 
     const InternalFormat &formatInfo = GetSizedInternalFormatInfo(internalformat);
     auto blockSizeOrErr =
-        formatInfo.computeCompressedImageSize(gl::Extents(width, height, 1));
+        formatInfo.computeCompressedImageSize(GL_UNSIGNED_BYTE, gl::Extents(width, height, 1));
     if (blockSizeOrErr.isError())
     {
         context->handleError(blockSizeOrErr.getError());
@@ -2773,7 +2773,7 @@ bool ValidateCompressedTexSubImage2D(Context *context,
 
     const InternalFormat &formatInfo = GetSizedInternalFormatInfo(format);
     auto blockSizeOrErr =
-        formatInfo.computeCompressedImageSize(gl::Extents(width, height, 1));
+        formatInfo.computeCompressedImageSize(GL_UNSIGNED_BYTE, gl::Extents(width, height, 1));
     if (blockSizeOrErr.isError())
     {
         context->handleError(blockSizeOrErr.getError());
@@ -4398,16 +4398,18 @@ bool ValidateBindRenderbuffer(ValidationContext *context, GLenum target, GLuint 
     return true;
 }
 
-static bool ValidBlendEquationMode(GLenum mode)
+static bool ValidBlendEquationMode(const ValidationContext *context, GLenum mode)
 {
     switch (mode)
     {
         case GL_FUNC_ADD:
         case GL_FUNC_SUBTRACT:
         case GL_FUNC_REVERSE_SUBTRACT:
+            return true;
+
         case GL_MIN:
         case GL_MAX:
-            return true;
+            return context->getClientVersion() >= ES_3_0 || context->getExtensions().blendMinMax;
 
         default:
             return false;
@@ -4425,7 +4427,7 @@ bool ValidateBlendColor(ValidationContext *context,
 
 bool ValidateBlendEquation(ValidationContext *context, GLenum mode)
 {
-    if (!ValidBlendEquationMode(mode))
+    if (!ValidBlendEquationMode(context, mode))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBlendEquation);
         return false;
@@ -4436,13 +4438,13 @@ bool ValidateBlendEquation(ValidationContext *context, GLenum mode)
 
 bool ValidateBlendEquationSeparate(ValidationContext *context, GLenum modeRGB, GLenum modeAlpha)
 {
-    if (!ValidBlendEquationMode(modeRGB))
+    if (!ValidBlendEquationMode(context, modeRGB))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBlendEquation);
         return false;
     }
 
-    if (!ValidBlendEquationMode(modeAlpha))
+    if (!ValidBlendEquationMode(context, modeAlpha))
     {
         ANGLE_VALIDATION_ERR(context, InvalidEnum(), InvalidBlendEquation);
         return false;

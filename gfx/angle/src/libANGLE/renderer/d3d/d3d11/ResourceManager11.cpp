@@ -360,16 +360,6 @@ gl::Error ResourceManager11::allocate(Renderer11 *renderer,
         shadowInitData = createInitDataIfNeeded<T>(desc);
     }
 
-    // In Windows 32-bit, it's possible that mAllocatedResourceDeviceMemory
-    // exceeds UINT32_MAX leading to a delayed crash when we release
-    // the context, we should prevent that happen
-    const auto resourceSize = ComputeMemoryUsage(desc);
-    if (mAllocatedResourceDeviceMemory[ResourceTypeIndex<T>()] >
-        mAllocatedResourceDeviceMemory[ResourceTypeIndex<T>()] +
-        resourceSize) {
-        return gl::OutOfMemory() << "Error: Internal Memory Counter overflow";
-    }
-
     HRESULT hr = CreateResource(device, desc, shadowInitData, &resource);
     if (FAILED(hr))
     {
@@ -389,7 +379,7 @@ gl::Error ResourceManager11::allocate(Renderer11 *renderer,
     }
 
     ASSERT(resource);
-    incrResource(GetResourceTypeFromD3D11<T>(), resourceSize);
+    incrResource(GetResourceTypeFromD3D11<T>(), ComputeMemoryUsage(desc));
     *resourceOut = std::move(Resource11<T>(resource, this));
     return gl::NoError();
 }
@@ -397,8 +387,6 @@ gl::Error ResourceManager11::allocate(Renderer11 *renderer,
 void ResourceManager11::incrResource(ResourceType resourceType, size_t memorySize)
 {
     mAllocatedResourceCounts[ResourceTypeIndex(resourceType)]++;
-    ASSERT(mAllocatedResourceDeviceMemory[ResourceTypeIndex(resourceType)] + memorySize >=
-           mAllocatedResourceDeviceMemory[ResourceTypeIndex(resourceType)]);
     mAllocatedResourceDeviceMemory[ResourceTypeIndex(resourceType)] += memorySize;
 }
 

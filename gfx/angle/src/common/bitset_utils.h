@@ -35,7 +35,7 @@ class BitSetT final
             mParent->set(mBit, x);
             return *this;
         }
-        explicit operator bool() const { return mParent->test(mBit); }
+        operator bool() const { return mParent->test(mBit); }
 
       private:
         friend class BitSetT;

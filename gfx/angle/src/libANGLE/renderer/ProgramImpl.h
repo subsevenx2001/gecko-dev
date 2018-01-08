@@ -110,10 +110,6 @@ class ProgramImpl : angle::NonCopyable
     {
     }
 
-    virtual void ensureUniformBlocksInitialized()
-    {
-    }
-
   protected:
     const gl::ProgramState &mState;
 };

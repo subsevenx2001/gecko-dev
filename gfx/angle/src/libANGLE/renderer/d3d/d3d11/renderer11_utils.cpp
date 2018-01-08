@@ -1206,6 +1206,26 @@ bool IsMultiviewSupported(D3D_FEATURE_LEVEL featureLevel)
     }
 }
 
+unsigned int GetMaxSampleMaskWords(D3D_FEATURE_LEVEL featureLevel)
+{
+    switch (featureLevel)
+    {
+        // D3D10+ only allows 1 sample mask.
+        case D3D_FEATURE_LEVEL_11_1:
+        case D3D_FEATURE_LEVEL_11_0:
+        case D3D_FEATURE_LEVEL_10_1:
+        case D3D_FEATURE_LEVEL_10_0:
+            return 1u;
+        case D3D_FEATURE_LEVEL_9_3:
+        case D3D_FEATURE_LEVEL_9_2:
+        case D3D_FEATURE_LEVEL_9_1:
+            return 0u;
+        default:
+            UNREACHABLE();
+            return 0u;
+    }
+}
+
 void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, const Renderer11DeviceCaps &renderer11DeviceCaps, gl::Caps *caps,
                   gl::TextureCapsMap *textureCapsMap, gl::Extensions *extensions, gl::Limitations *limitations)
 {
@@ -1365,6 +1385,9 @@ void GenerateCaps(ID3D11Device *device, ID3D11DeviceContext *deviceContext, cons
     caps->maxColorTextureSamples = std::numeric_limits<GLint>::max();
     caps->maxDepthTextureSamples = std::numeric_limits<GLint>::max();
     caps->maxIntegerSamples      = std::numeric_limits<GLint>::max();
+
+    // Sample mask words limits
+    caps->maxSampleMaskWords = GetMaxSampleMaskWords(featureLevel);
 
     // Framebuffer limits
     caps->maxFramebufferSamples = std::numeric_limits<GLint>::max();
@@ -2026,6 +2049,21 @@ HRESULT SetDebugName(ID3D11DeviceChild *resource, const char *name)
 #endif
 }
 
+gl::Error LazyInputLayout::resolve(Renderer11 *renderer)
+{
+    return resolveImpl(renderer, mInputDesc, &mByteCode, mDebugName);
+}
+
+LazyBlendState::LazyBlendState(const D3D11_BLEND_DESC &desc, const char *debugName)
+    : mDesc(desc), mDebugName(debugName)
+{
+}
+
+gl::Error LazyBlendState::resolve(Renderer11 *renderer)
+{
+    return resolveImpl(renderer, mDesc, nullptr, mDebugName);
+}
+
 angle::WorkaroundsD3D GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps,
                                           const DXGI_ADAPTER_DESC &adapterDesc)
 {
@@ -2068,7 +2106,7 @@ angle::WorkaroundsD3D GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps
             d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion) < IntelDriverVersion(4539);
         if (IsSkylake(adapterDesc.DeviceId))
         {
-            workarounds.callClearTwice =
+            workarounds.callClearTwiceOnSmallTarget =
                 d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion) <
                 IntelDriverVersion(4771);
             workarounds.emulateIsnanFloat =
