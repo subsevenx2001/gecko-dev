@@ -23,6 +23,7 @@ enum class TExtension
     EXT_blend_func_extended,
     EXT_draw_buffers,
     EXT_frag_depth,
+    EXT_geometry_shader,
     EXT_shader_framebuffer_fetch,
     EXT_shader_texture_lod,
     EXT_YUV_target,
@@ -30,7 +31,6 @@ enum class TExtension
     NV_shader_framebuffer_fetch,
     OES_EGL_image_external,
     OES_EGL_image_external_essl3,
-    OES_geometry_shader,
     OES_standard_derivatives,
     OVR_multiview
 };

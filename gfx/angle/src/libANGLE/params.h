@@ -71,10 +71,9 @@ ANGLE_INLINE void ParamsBase::Factory(EntryPointParamType<EP> *objBuffer, ArgsT.
 class HasIndexRange : public ParamsBase
 {
   public:
-    HasIndexRange(Context *context, GLsizei count, GLenum type, const void *indices)
-        : ParamsBase(context), mContext(context), mCount(count), mType(type), mIndices(indices)
-    {
-    }
+    // Dummy placeholder that can't generate an index range.
+    HasIndexRange();
+    HasIndexRange(Context *context, GLsizei count, GLenum type, const void *indices);
 
     template <EntryPoint EP, typename... ArgsT>
     static void Factory(HasIndexRange *objBuffer, ArgsT... args);
@@ -216,6 +215,13 @@ template <>
 struct DefaultReturnValue<EntryPoint::ClientWaitSync, GLenum>
 {
     static constexpr GLenum kValue = GL_WAIT_FAILED;
+};
+
+// glTestFenceNV should still return TRUE for an invalid fence.
+template <>
+struct DefaultReturnValue<EntryPoint::TestFenceNV, GLboolean>
+{
+    static constexpr GLboolean kValue = GL_TRUE;
 };
 
 template <EntryPoint EP, typename ReturnType>

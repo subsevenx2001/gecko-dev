@@ -24,6 +24,7 @@ class VertexBinding final : angle::NonCopyable
   public:
     VertexBinding();
     VertexBinding(VertexBinding &&binding);
+    ~VertexBinding();
     VertexBinding &operator=(VertexBinding &&binding);
 
     GLuint getStride() const { return mStride; }
@@ -52,7 +53,7 @@ class VertexBinding final : angle::NonCopyable
 struct VertexAttribute final : private angle::NonCopyable
 {
     explicit VertexAttribute(GLuint bindingIndex);
-    VertexAttribute(VertexAttribute &&attrib);
+    explicit VertexAttribute(VertexAttribute &&attrib);
     VertexAttribute &operator=(VertexAttribute &&attrib);
 
     bool enabled;  // For glEnable/DisableVertexAttribArray

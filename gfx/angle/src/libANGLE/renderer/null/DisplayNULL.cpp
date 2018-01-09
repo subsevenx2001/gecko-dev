@@ -174,7 +174,7 @@ ContextImpl *DisplayNULL::createContext(const gl::ContextState &state)
     return new ContextNULL(state, mAllocationTracker.get());
 }
 
-StreamProducerImpl *DisplayNULL::createStreamProducerD3DTextureNV12(
+StreamProducerImpl *DisplayNULL::createStreamProducerD3DTexture(
     egl::Stream::ConsumerType consumerType,
     const egl::AttributeMap &attribs)
 {
@@ -206,6 +206,7 @@ void DisplayNULL::generateExtensions(egl::DisplayExtensions *outExtensions) cons
     outExtensions->displayTextureShareGroup           = true;
     outExtensions->createContextClientArrays          = true;
     outExtensions->programCacheControl                = true;
+    outExtensions->robustResourceInitialization       = true;
 }
 
 void DisplayNULL::generateCaps(egl::Caps *outCaps) const

@@ -45,6 +45,8 @@ class VertexDataManager;
 
 struct Renderer11DeviceCaps
 {
+    Renderer11DeviceCaps();
+
     D3D_FEATURE_LEVEL featureLevel;
     bool supportsDXGI1_2;                // Support for DXGI 1.2
     bool supportsClearView;              // Support for ID3D11DeviceContext1::ClearView
@@ -112,7 +114,7 @@ class Renderer11 : public RendererD3D
 {
   public:
     explicit Renderer11(egl::Display *display);
-    virtual ~Renderer11();
+    ~Renderer11() override;
 
     egl::Error initialize() override;
     bool resetDevice() override;
@@ -161,8 +163,6 @@ class Renderer11 : public RendererD3D
     unsigned int getReservedFragmentUniformBuffers() const;
 
     bool getShareHandleSupport() const;
-
-    bool getNV12TextureSupport() const;
 
     int getMajorShaderModel() const override;
     int getMinorShaderModel() const override;
@@ -228,13 +228,13 @@ class Renderer11 : public RendererD3D
     // Shader operations
     gl::Error loadExecutable(const uint8_t *function,
                              size_t length,
-                             ShaderType type,
+                             gl::ShaderType type,
                              const std::vector<D3DVarying> &streamOutVaryings,
                              bool separatedOutputBuffers,
                              ShaderExecutableD3D **outExecutable) override;
     gl::Error compileToExecutable(gl::InfoLog &infoLog,
                                   const std::string &shaderHLSL,
-                                  ShaderType type,
+                                  gl::ShaderType type,
                                   const std::vector<D3DVarying> &streamOutVaryings,
                                   bool separatedOutputBuffers,
                                   const angle::CompilerWorkaroundsD3D &workarounds,
@@ -291,15 +291,14 @@ class Renderer11 : public RendererD3D
                                                       GLsizei height,
                                                       int levels,
                                                       int samples,
-                                                      GLboolean fixedSampleLocations) override;
+                                                      bool fixedSampleLocations) override;
 
     VertexBuffer *createVertexBuffer() override;
     IndexBuffer *createIndexBuffer() override;
 
     // Stream Creation
-    StreamProducerImpl *createStreamProducerD3DTextureNV12(
-        egl::Stream::ConsumerType consumerType,
-        const egl::AttributeMap &attribs) override;
+    StreamProducerImpl *createStreamProducerD3DTexture(egl::Stream::ConsumerType consumerType,
+                                                       const egl::AttributeMap &attribs) override;
 
     // D3D11-renderer specific methods
     ID3D11Device *getDevice() { return mDevice; }
@@ -371,7 +370,7 @@ class Renderer11 : public RendererD3D
     bool isES3Capable() const;
     const Renderer11DeviceCaps &getRenderer11DeviceCaps() const { return mRenderer11DeviceCaps; };
 
-    RendererClass getRendererClass() const override { return RENDERER_D3D11; }
+    RendererClass getRendererClass() const override;
     StateManager11 *getStateManager() { return &mStateManager; }
 
     void onSwap();
@@ -460,6 +459,14 @@ class Renderer11 : public RendererD3D
 
     bool canSelectViewInVertexShader() const override;
 
+    void onDirtyUniformBlockBinding(GLuint uniformBlockIndex) override;
+
+    gl::Error mapResource(ID3D11Resource *resource,
+                          UINT subResource,
+                          D3D11_MAP mapType,
+                          UINT mapFlags,
+                          D3D11_MAPPED_SUBRESOURCE *mappedResource);
+
   private:
     void generateCaps(gl::Caps *outCaps,
                       gl::TextureCapsMap *outTextureCaps,
@@ -497,10 +504,11 @@ class Renderer11 : public RendererD3D
                                 const gl::Offset &destOffset,
                                 RenderTargetD3D *destRenderTarget);
 
-    gl::SupportedSampleSet generateSampleSetFromCaps(
+    gl::SupportedSampleSet generateSampleSetForEGLConfig(
         const gl::TextureCaps &colorBufferFormatCaps,
         const gl::TextureCaps &depthStencilBufferFormatCaps) const;
 
+    HRESULT callD3D11CreateDevice(PFN_D3D11_CREATE_DEVICE createDevice, bool debug);
     egl::Error initializeD3DDevice();
     egl::Error initializeDevice();
     void releaseDeviceResources();
@@ -568,123 +576,6 @@ class Renderer11 : public RendererD3D
 
     TextureHelper11 mCachedResolveTexture;
 };
-
-namespace d3d11
-{
-
-template <ResourceType ResourceT>
-class LazyResource : angle::NonCopyable
-{
-  public:
-    constexpr LazyResource() : mResource() {}
-    virtual ~LazyResource() {}
-
-    virtual gl::Error resolve(Renderer11 *renderer) = 0;
-    void reset() { mResource.reset(); }
-    GetD3D11Type<ResourceT> *get() const
-    {
-        ASSERT(mResource.valid());
-        return mResource.get();
-    }
-
-    const Resource11<GetD3D11Type<ResourceT>> &getObj() const { return mResource; }
-
-  protected:
-    LazyResource(LazyResource &&other) : mResource(std::move(other.mResource)) {}
-    gl::Error resolveImpl(Renderer11 *renderer,
-                          const GetDescType<ResourceT> &desc,
-                          GetInitDataType<ResourceT> *initData,
-                          const char *name)
-    {
-        if (!mResource.valid())
-        {
-            ANGLE_TRY(renderer->allocateResource(desc, initData, &mResource));
-            mResource.setDebugName(name);
-        }
-        return gl::NoError();
-    }
-
-    Resource11<GetD3D11Type<ResourceT>> mResource;
-};
-
-template <typename D3D11ShaderType>
-class LazyShader final : public LazyResource<GetResourceTypeFromD3D11<D3D11ShaderType>()>
-{
-  public:
-    // All parameters must be constexpr. Not supported in VS2013.
-    constexpr LazyShader(const BYTE *byteCode, size_t byteCodeSize, const char *name)
-        : mByteCode(byteCode, byteCodeSize), mName(name)
-    {
-    }
-
-    constexpr LazyShader(LazyShader &&shader)
-        : LazyResource<GetResourceTypeFromD3D11<D3D11ShaderType>()>(std::move(shader)),
-          mByteCode(std::move(shader.mByteCode)),
-          mName(shader.mName)
-    {
-    }
-
-    gl::Error resolve(Renderer11 *renderer) override
-    {
-        return this->resolveImpl(renderer, mByteCode, nullptr, mName);
-    }
-
-  private:
-    ShaderData mByteCode;
-    const char *mName;
-};
-
-class LazyInputLayout final : public LazyResource<ResourceType::InputLayout>
-{
-  public:
-    constexpr LazyInputLayout(const D3D11_INPUT_ELEMENT_DESC *inputDesc,
-                              size_t inputDescLen,
-                              const BYTE *byteCode,
-                              size_t byteCodeLen,
-                              const char *debugName)
-        : mInputDesc(inputDesc, inputDescLen),
-          mByteCode(byteCode, byteCodeLen),
-          mDebugName(debugName)
-    {
-    }
-
-    gl::Error resolve(Renderer11 *renderer) override
-    {
-        return resolveImpl(renderer, mInputDesc, &mByteCode, mDebugName);
-    }
-
-  private:
-    InputElementArray mInputDesc;
-    ShaderData mByteCode;
-    const char *mDebugName;
-};
-
-class LazyBlendState final : public LazyResource<ResourceType::BlendState>
-{
-  public:
-    LazyBlendState(const D3D11_BLEND_DESC &desc, const char *debugName)
-        : mDesc(desc), mDebugName(debugName)
-    {
-    }
-
-
-    gl::Error resolve(Renderer11 *renderer)
-    {
-        return resolveImpl(renderer, mDesc, nullptr, mDebugName);
-    }
-
-
-  private:
-    D3D11_BLEND_DESC mDesc;
-    const char *mDebugName;
-};
-
-
-
-
-
-
-}  // namespace d3d11
 
 }  // namespace rx
 #endif  // LIBANGLE_RENDERER_D3D_D3D11_RENDERER11_H_

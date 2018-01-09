@@ -25,7 +25,7 @@ class RenderbufferD3D : public RenderbufferImpl
 {
   public:
     RenderbufferD3D(RendererD3D *renderer);
-    virtual ~RenderbufferD3D();
+    ~RenderbufferD3D() override;
 
     gl::Error onDestroy(const gl::Context *context) override;
 
@@ -45,6 +45,9 @@ class RenderbufferD3D : public RenderbufferImpl
                                         GLenum binding,
                                         const gl::ImageIndex &imageIndex,
                                         FramebufferAttachmentRenderTarget **rtOut) override;
+
+    gl::Error initializeContents(const gl::Context *context,
+                                 const gl::ImageIndex &imageIndex) override;
 
   private:
     void deleteRenderTarget(const gl::Context *context);

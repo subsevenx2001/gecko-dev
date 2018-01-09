@@ -10,7 +10,6 @@
 
 #include "libANGLE/renderer/d3d/ImageD3D.h"
 
-#include "libANGLE/formatutils.h"
 #include "libANGLE/Framebuffer.h"
 #include "libANGLE/FramebufferAttachment.h"
 #include "libANGLE/renderer/d3d/FramebufferD3D.h"
@@ -30,13 +29,34 @@ ImageD3D::ImageD3D()
 {
 }
 
-GLenum
-ImageD3D::getSizedInputFormat(GLenum inputType) const
+gl::Error ImageD3D::setManagedSurface2D(const gl::Context *context,
+                                        TextureStorage *storage,
+                                        int level)
 {
-    const auto &internalFormat = gl::GetSizedInternalFormatInfo(mInternalFormat);
-    const auto &unsizedInternalFormat = internalFormat.format;
-    const auto &sizedIF = gl::GetInternalFormatInfo(unsizedInternalFormat, inputType);
-    return sizedIF.sizedInternalFormat;
+    return gl::NoError();
+}
+
+gl::Error ImageD3D::setManagedSurfaceCube(const gl::Context *context,
+                                          TextureStorage *storage,
+                                          int face,
+                                          int level)
+{
+    return gl::NoError();
+}
+
+gl::Error ImageD3D::setManagedSurface3D(const gl::Context *context,
+                                        TextureStorage *storage,
+                                        int level)
+{
+    return gl::NoError();
+}
+
+gl::Error ImageD3D::setManagedSurface2DArray(const gl::Context *context,
+                                             TextureStorage *storage,
+                                             int layer,
+                                             int level)
+{
+    return gl::NoError();
 }
 
 }  // namespace rx

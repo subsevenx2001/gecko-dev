@@ -137,8 +137,7 @@ bool Image11::isDirty() const
     // recovered from TextureStorage AND the texture doesn't require init data (i.e. a blank new
     // texture will suffice) AND robust resource initialization is not enabled then isDirty should
     // still return false.
-    if (mDirty && !mStagingTexture.valid() && !mRecoverFromStorage &&
-        !mRenderer->isRobustResourceInitEnabled())
+    if (mDirty && !mStagingTexture.valid() && !mRecoverFromStorage)
     {
         const Renderer11DeviceCaps &deviceCaps = mRenderer->getRenderer11DeviceCaps();
         const auto &formatInfo                 = d3d11::Format::Get(mInternalFormat, deviceCaps);
@@ -255,8 +254,7 @@ bool Image11::redefine(GLenum target,
         mRenderable = (formatInfo.rtvFormat != DXGI_FORMAT_UNKNOWN);
 
         releaseStagingTexture();
-        mDirty = (formatInfo.dataInitializerFunction != nullptr) ||
-                 mRenderer->isRobustResourceInitEnabled();
+        mDirty = (formatInfo.dataInitializerFunction != nullptr);
 
         return true;
     }
@@ -279,22 +277,21 @@ DXGI_FORMAT Image11::getDXGIFormat() const
 gl::Error Image11::loadData(const gl::Context *context,
                             const gl::Box &area,
                             const gl::PixelUnpackState &unpack,
-                            GLenum inputType,
+                            GLenum type,
                             const void *input,
                             bool applySkipImages)
 {
-    const auto sizedInputFormat = getSizedInputFormat(inputType);
-    const gl::InternalFormat &inputFormat = gl::GetSizedInternalFormatInfo(sizedInputFormat);
+    const gl::InternalFormat &formatInfo = gl::GetSizedInternalFormatInfo(mInternalFormat);
     GLuint inputRowPitch                 = 0;
     ANGLE_TRY_RESULT(
-        inputFormat.computeRowPitch(area.width, unpack.alignment, unpack.rowLength),
+        formatInfo.computeRowPitch(type, area.width, unpack.alignment, unpack.rowLength),
         inputRowPitch);
     GLuint inputDepthPitch = 0;
-    ANGLE_TRY_RESULT(gl::InternalFormat::computeDepthPitch(area.height, unpack.imageHeight, inputRowPitch),
+    ANGLE_TRY_RESULT(formatInfo.computeDepthPitch(area.height, unpack.imageHeight, inputRowPitch),
                      inputDepthPitch);
     GLuint inputSkipBytes = 0;
     ANGLE_TRY_RESULT(
-        inputFormat.computeSkipBytes(inputRowPitch, inputDepthPitch, unpack, applySkipImages),
+        formatInfo.computeSkipBytes(inputRowPitch, inputDepthPitch, unpack, applySkipImages),
         inputSkipBytes);
 
     const d3d11::DXGIFormatSize &dxgiFormatInfo = d3d11::GetDXGIFormatSizeInfo(mDXGIFormat);
@@ -302,7 +299,7 @@ gl::Error Image11::loadData(const gl::Context *context,
 
     const d3d11::Format &d3dFormatInfo =
         d3d11::Format::Get(mInternalFormat, mRenderer->getRenderer11DeviceCaps());
-    LoadImageFunction loadFunction = d3dFormatInfo.getLoadFunctions()(inputType).loadFunction;
+    LoadImageFunction loadFunction = d3dFormatInfo.getLoadFunctions()(type).loadFunction;
 
     D3D11_MAPPED_SUBRESOURCE mappedImage;
     ANGLE_TRY(map(context, D3D11_MAP_WRITE, &mappedImage));
@@ -325,9 +322,9 @@ gl::Error Image11::loadCompressedData(const gl::Context *context,
 {
     const gl::InternalFormat &formatInfo = gl::GetSizedInternalFormatInfo(mInternalFormat);
     GLsizei inputRowPitch                = 0;
-    ANGLE_TRY_RESULT(formatInfo.computeRowPitch(area.width, 1, 0), inputRowPitch);
+    ANGLE_TRY_RESULT(formatInfo.computeRowPitch(GL_UNSIGNED_BYTE, area.width, 1, 0), inputRowPitch);
     GLsizei inputDepthPitch = 0;
-    ANGLE_TRY_RESULT(gl::InternalFormat::computeDepthPitch(area.height, 0, inputRowPitch), inputDepthPitch);
+    ANGLE_TRY_RESULT(formatInfo.computeDepthPitch(area.height, 0, inputRowPitch), inputDepthPitch);
 
     const d3d11::DXGIFormatSize &dxgiFormatInfo = d3d11::GetDXGIFormatSizeInfo(mDXGIFormat);
     GLuint outputPixelSize                      = dxgiFormatInfo.pixelBytes;
@@ -572,6 +569,7 @@ gl::Error Image11::createStagingTexture()
             ANGLE_TRY(mRenderer->allocateTexture(desc, formatInfo, &mStagingTexture));
         }
 
+        mStagingTexture.setDebugName("Image11::StagingTexture3D");
         mStagingSubresource = D3D11CalcSubresource(lodOffset, 0, lodOffset + 1);
     }
     else if (mTarget == GL_TEXTURE_2D || mTarget == GL_TEXTURE_2D_ARRAY ||
@@ -606,6 +604,7 @@ gl::Error Image11::createStagingTexture()
             ANGLE_TRY(mRenderer->allocateTexture(desc, formatInfo, &mStagingTexture));
         }
 
+        mStagingTexture.setDebugName("Image11::StagingTexture2D");
         mStagingSubresource = D3D11CalcSubresource(lodOffset, 0, lodOffset + 1);
     }
     else
@@ -626,20 +625,9 @@ gl::Error Image11::map(const gl::Context *context, D3D11_MAP mapType, D3D11_MAPP
     unsigned int subresourceIndex  = 0;
     ANGLE_TRY(getStagingTexture(&stagingTexture, &subresourceIndex));
 
-    ID3D11DeviceContext *deviceContext = mRenderer->getDeviceContext();
-
     ASSERT(stagingTexture && stagingTexture->valid());
-    HRESULT result = deviceContext->Map(stagingTexture->get(), subresourceIndex, mapType, 0, map);
 
-    if (FAILED(result))
-    {
-        // this can fail if the device is removed (from TDR)
-        if (d3d11::isDeviceLostError(result))
-        {
-            mRenderer->notifyDeviceLost();
-        }
-        return gl::OutOfMemory() << "Failed to map staging texture, " << gl::FmtHR(result);
-    }
+    ANGLE_TRY(mRenderer->mapResource(stagingTexture->get(), subresourceIndex, mapType, 0, map));
 
     mDirty = true;
 

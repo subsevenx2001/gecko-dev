@@ -45,6 +45,7 @@
             '<(angle_path)/src/tests/gl_tests/FramebufferMultiviewTest.cpp',
             '<(angle_path)/src/tests/gl_tests/FramebufferRenderMipmapTest.cpp',
             '<(angle_path)/src/tests/gl_tests/FramebufferTest.cpp',
+            '<(angle_path)/src/tests/gl_tests/GeometryShaderTest.cpp',
             '<(angle_path)/src/tests/gl_tests/GLSLTest.cpp',
             '<(angle_path)/src/tests/gl_tests/ImageTest.cpp',
             '<(angle_path)/src/tests/gl_tests/IncompleteTextureTest.cpp',
@@ -52,6 +53,7 @@
             '<(angle_path)/src/tests/gl_tests/IndexedPointsTest.cpp',
             '<(angle_path)/src/tests/gl_tests/InstancingTest.cpp',
             '<(angle_path)/src/tests/gl_tests/LineLoopTest.cpp',
+            '<(angle_path)/src/tests/gl_tests/LinkAndRelinkTest.cpp',
             '<(angle_path)/src/tests/gl_tests/MaxTextureSizeTest.cpp',
             '<(angle_path)/src/tests/gl_tests/MipmapTest.cpp',
             '<(angle_path)/src/tests/gl_tests/MultisampleCompatibilityTest.cpp',
@@ -85,6 +87,7 @@
             '<(angle_path)/src/tests/gl_tests/TextureMultisampleTest.cpp',
             '<(angle_path)/src/tests/gl_tests/TextureRectangleTest.cpp',
             '<(angle_path)/src/tests/gl_tests/TextureTest.cpp',
+            '<(angle_path)/src/tests/gl_tests/TextureUploadFormatTest.cpp',
             '<(angle_path)/src/tests/gl_tests/TimerQueriesTest.cpp',
             '<(angle_path)/src/tests/gl_tests/TransformFeedbackTest.cpp',
             '<(angle_path)/src/tests/gl_tests/UniformBufferTest.cpp',
@@ -111,6 +114,10 @@
             '<(angle_path)/src/tests/test_utils/angle_test_instantiate.cpp',
             '<(angle_path)/src/tests/test_utils/angle_test_instantiate.h',
             '<(angle_path)/src/tests/test_utils/gl_raii.h',
+        ],
+        'angle_end2end_tests_mac_sources':
+        [
+            '<(angle_path)/src/tests/egl_tests/EGLIOSurfaceClientBufferTest.cpp',
         ],
         'angle_end2end_tests_win_sources':
         [
@@ -151,6 +158,21 @@
     ],
     'conditions':
     [
+        ['OS=="mac"',
+        {
+            'sources':
+            [
+                '<@(angle_end2end_tests_mac_sources)',
+            ],
+            'link_settings':
+            {
+                'libraries':
+                [
+                    '$(SDKROOT)/System/Library/Frameworks/CoreFoundation.framework',
+                    '$(SDKROOT)/System/Library/Frameworks/IOSurface.framework',
+                ],
+            },
+        }],
         ['OS=="win"',
         {
             'sources':

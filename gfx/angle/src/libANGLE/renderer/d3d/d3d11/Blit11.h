@@ -13,7 +13,7 @@
 #include "libANGLE/Error.h"
 #include "libANGLE/angletypes.h"
 #include "libANGLE/renderer/d3d/d3d11/ResourceManager11.h"
-#include "libANGLE/renderer/d3d/d3d11/Renderer11.h"
+#include "libANGLE/renderer/d3d/d3d11/renderer11_utils.h"
 
 #include <map>
 
@@ -194,6 +194,11 @@ class Blit11 : angle::NonCopyable
 
     struct Shader
     {
+        Shader();
+        Shader(Shader &&other);
+        ~Shader();
+        Shader &operator=(Shader &&other);
+
         ShaderDimension dimension;
         d3d11::PixelShader pixelShader;
     };

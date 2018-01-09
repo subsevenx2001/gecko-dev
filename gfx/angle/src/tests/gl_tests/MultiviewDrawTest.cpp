@@ -438,16 +438,30 @@ class MultiviewOcclusionQueryTest : public MultiviewRenderTest
   protected:
     MultiviewOcclusionQueryTest() {}
 
+    bool requestOcclusionQueryExtension()
+    {
+        if (extensionRequestable("GL_EXT_occlusion_query_boolean"))
+        {
+            glRequestExtensionANGLE("GL_EXT_occlusion_query_boolean");
+        }
+
+        if (!extensionEnabled("GL_EXT_occlusion_query_boolean"))
+        {
+            std::cout << "Test skipped due to missing GL_EXT_occlusion_query_boolean." << std::endl;
+            return false;
+        }
+        return true;
+    }
+
     GLuint drawAndRetrieveOcclusionQueryResult(GLuint program)
     {
-        GLuint query;
-        glGenQueries(1, &query);
-        glBeginQuery(GL_ANY_SAMPLES_PASSED, query);
+        GLQueryEXT query;
+        glBeginQueryEXT(GL_ANY_SAMPLES_PASSED, query);
         drawQuad(program, "vPosition", 0.0f, 1.0f, true);
         glEndQueryEXT(GL_ANY_SAMPLES_PASSED);
 
         GLuint result = GL_TRUE;
-        glGetQueryObjectuiv(query, GL_QUERY_RESULT, &result);
+        glGetQueryObjectuivEXT(query, GL_QUERY_RESULT, &result);
         return result;
     }
 };
@@ -692,15 +706,21 @@ TEST_P(MultiviewDrawValidationTest, ActiveTransformFeedback)
     const GLint viewportOffsets[4] = {0, 0, 2, 0};
 
     const std::string &vsSource =
-        "#version 300 es\n"
-        "void main()\n"
-        "{}\n";
+        R"(#version 300 es
+        out float tfVarying;
+        void main()
+        {
+            tfVarying = 1.0;
+        })";
     const std::string &fsSource =
-        "#version 300 es\n"
-        "precision mediump float;\n"
-        "void main()\n"
-        "{}\n";
-    ANGLE_GL_PROGRAM(program, vsSource, fsSource);
+        R"(#version 300 es
+        precision mediump float;
+        void main()
+        {})";
+    std::vector<std::string> tfVaryings;
+    tfVaryings.push_back(std::string("tfVarying"));
+    ANGLE_GL_PROGRAM_TRANSFORM_FEEDBACK(program, vsSource, fsSource, tfVaryings,
+                                        GL_SEPARATE_ATTRIBS);
     glUseProgram(program);
 
     GLBuffer tbo;
@@ -709,6 +729,9 @@ TEST_P(MultiviewDrawValidationTest, ActiveTransformFeedback)
 
     GLTransformFeedback transformFeedback;
     glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, transformFeedback);
+
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, tbo);
+
     glBeginTransformFeedback(GL_TRIANGLES);
     ASSERT_GL_NO_ERROR();
 
@@ -1192,10 +1215,8 @@ TEST_P(MultiviewRenderTest, DivisorOrderOfOperation)
 // transforms geometry to be outside of the clip region.
 TEST_P(MultiviewOcclusionQueryTest, OcclusionQueryNothingVisible)
 {
-    if (!requestMultiviewExtension())
-    {
-        return;
-    }
+    ANGLE_SKIP_TEST_IF(!requestMultiviewExtension());
+    ANGLE_SKIP_TEST_IF(!requestOcclusionQueryExtension());
 
     const std::string vsSource =
         "#version 300 es\n"
@@ -1229,10 +1250,8 @@ TEST_P(MultiviewOcclusionQueryTest, OcclusionQueryNothingVisible)
 // output.
 TEST_P(MultiviewOcclusionQueryTest, OcclusionQueryOnlyLeftVisible)
 {
-    if (!requestMultiviewExtension())
-    {
-        return;
-    }
+    ANGLE_SKIP_TEST_IF(!requestMultiviewExtension());
+    ANGLE_SKIP_TEST_IF(!requestOcclusionQueryExtension());
 
     const std::string vsSource =
         "#version 300 es\n"
@@ -1266,10 +1285,8 @@ TEST_P(MultiviewOcclusionQueryTest, OcclusionQueryOnlyLeftVisible)
 // output.
 TEST_P(MultiviewOcclusionQueryTest, OcclusionQueryOnlyRightVisible)
 {
-    if (!requestMultiviewExtension())
-    {
-        return;
-    }
+    ANGLE_SKIP_TEST_IF(!requestMultiviewExtension());
+    ANGLE_SKIP_TEST_IF(!requestOcclusionQueryExtension());
 
     const std::string vsSource =
         "#version 300 es\n"
@@ -1410,6 +1427,9 @@ TEST_P(MultiviewRenderPrimitiveTest, Points)
     {
         return;
     }
+
+    // Test failing on P400 graphics card (anglebug.com/2228)
+    ANGLE_SKIP_TEST_IF(IsWindows() && IsD3D11() && IsNVIDIA());
 
     const std::string vsSource =
         "#version 300 es\n"
@@ -1850,6 +1870,9 @@ TEST_P(MultiviewRenderTest, DivisorUpdatedOnProgramChange)
         return;
     }
 
+    // Test failing on P400 graphics card (anglebug.com/2228)
+    ANGLE_SKIP_TEST_IF(IsWindows() && IsD3D11() && IsNVIDIA());
+
     GLVertexArray vao;
     glBindVertexArray(vao);
     GLBuffer vbo;
@@ -1995,6 +2018,9 @@ TEST_P(MultiviewRenderTest, FlatInterpolation)
     {
         return;
     }
+
+    // Test failing on P400 graphics card (anglebug.com/2228)
+    ANGLE_SKIP_TEST_IF(IsWindows() && IsD3D11() && IsNVIDIA());
 
     // TODO(mradev): Find out why this fails on Win10 Intel HD 630 D3D11
     // (http://anglebug.com/2062)

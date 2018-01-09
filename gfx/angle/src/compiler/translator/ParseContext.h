@@ -6,12 +6,13 @@
 #ifndef COMPILER_TRANSLATOR_PARSECONTEXT_H_
 #define COMPILER_TRANSLATOR_PARSECONTEXT_H_
 
+#include "compiler/preprocessor/Preprocessor.h"
 #include "compiler/translator/Compiler.h"
+#include "compiler/translator/Declarator.h"
 #include "compiler/translator/Diagnostics.h"
 #include "compiler/translator/DirectiveHandler.h"
-#include "compiler/translator/SymbolTable.h"
 #include "compiler/translator/QualifierTypes.h"
-#include "compiler/preprocessor/Preprocessor.h"
+#include "compiler/translator/SymbolTable.h"
 
 namespace sh
 {
@@ -135,9 +136,21 @@ class TParseContext : angle::NonCopyable
     void checkDeclaratorLocationIsNotSpecified(const TSourceLoc &line, const TPublicType &pType);
     void checkLocationIsNotSpecified(const TSourceLoc &location,
                                      const TLayoutQualifier &layoutQualifier);
+    void checkStd430IsForShaderStorageBlock(const TSourceLoc &location,
+                                            const TLayoutBlockStorage &blockStorage,
+                                            const TQualifier &qualifier);
     void checkIsParameterQualifierValid(const TSourceLoc &line,
                                         const TTypeQualifierBuilder &typeQualifierBuilder,
                                         TType *type);
+
+    // Check if at least one of the specified extensions can be used, and generate error/warning as
+    // appropriate according to the spec.
+    // This function is only needed for a few different small constant sizes of extension array, and
+    // we want to avoid unnecessary dynamic allocations. That's why checkCanUseOneOfExtensions is a
+    // template function rather than one taking a vector.
+    template <size_t size>
+    bool checkCanUseOneOfExtensions(const TSourceLoc &line,
+                                    const std::array<TExtension, size> &extensions);
     bool checkCanUseExtension(const TSourceLoc &line, TExtension extension);
 
     // Done for all declarations, whether empty or not.
@@ -148,7 +161,7 @@ class TParseContext : angle::NonCopyable
     void nonEmptyDeclarationErrorCheck(const TPublicType &publicType,
                                        const TSourceLoc &identifierLocation);
     // Done only for empty declarations.
-    void emptyDeclarationErrorCheck(const TPublicType &publicType, const TSourceLoc &location);
+    void emptyDeclarationErrorCheck(const TType &type, const TSourceLoc &location);
 
     void checkLayoutQualifierSupported(const TSourceLoc &location,
                                        const TString &layoutQualifierName,
@@ -168,7 +181,7 @@ class TParseContext : angle::NonCopyable
     {
         return mDirectiveHandler.extensionBehavior();
     }
-    bool supportsExtension(TExtension extension);
+
     bool isExtensionEnabled(TExtension extension) const;
     void handleExtensionDirective(const TSourceLoc &loc, const char *extName, const char *behavior);
     void handlePragmaDirective(const TSourceLoc &loc,
@@ -180,7 +193,7 @@ class TParseContext : angle::NonCopyable
     // is not needed in the AST.
     bool executeInitializer(const TSourceLoc &line,
                             const TString &identifier,
-                            const TPublicType &pType,
+                            TType type,
                             TIntermTyped *initializer,
                             TIntermBinary **initNode);
     TIntermNode *addConditionInitializer(const TPublicType &pType,
@@ -205,11 +218,11 @@ class TParseContext : angle::NonCopyable
     TIntermDeclaration *parseSingleDeclaration(TPublicType &publicType,
                                                const TSourceLoc &identifierOrTypeLocation,
                                                const TString &identifier);
-    TIntermDeclaration *parseSingleArrayDeclaration(TPublicType &publicType,
+    TIntermDeclaration *parseSingleArrayDeclaration(TPublicType &elementType,
                                                     const TSourceLoc &identifierLocation,
                                                     const TString &identifier,
                                                     const TSourceLoc &indexLocation,
-                                                    TIntermTyped *indexExpression);
+                                                    const TVector<unsigned int> &arraySizes);
     TIntermDeclaration *parseSingleInitDeclaration(const TPublicType &publicType,
                                                    const TSourceLoc &identifierLocation,
                                                    const TString &identifier,
@@ -218,11 +231,11 @@ class TParseContext : angle::NonCopyable
 
     // Parse a declaration like "type a[n] = initializer"
     // Note that this does not apply to declarations like "type[n] a = initializer"
-    TIntermDeclaration *parseSingleArrayInitDeclaration(TPublicType &publicType,
+    TIntermDeclaration *parseSingleArrayInitDeclaration(TPublicType &elementType,
                                                         const TSourceLoc &identifierLocation,
                                                         const TString &identifier,
                                                         const TSourceLoc &indexLocation,
-                                                        TIntermTyped *indexExpression,
+                                                        const TVector<unsigned int> &arraySizes,
                                                         const TSourceLoc &initLocation,
                                                         TIntermTyped *initializer);
 
@@ -236,11 +249,11 @@ class TParseContext : angle::NonCopyable
                          const TSourceLoc &identifierLocation,
                          const TString &identifier,
                          TIntermDeclaration *declarationOut);
-    void parseArrayDeclarator(TPublicType &publicType,
+    void parseArrayDeclarator(TPublicType &elementType,
                               const TSourceLoc &identifierLocation,
                               const TString &identifier,
                               const TSourceLoc &arrayLocation,
-                              TIntermTyped *indexExpression,
+                              const TVector<unsigned int> &arraySizes,
                               TIntermDeclaration *declarationOut);
     void parseInitDeclarator(const TPublicType &publicType,
                              const TSourceLoc &identifierLocation,
@@ -250,14 +263,16 @@ class TParseContext : angle::NonCopyable
                              TIntermDeclaration *declarationOut);
 
     // Parse a declarator like "a[n] = initializer"
-    void parseArrayInitDeclarator(const TPublicType &publicType,
+    void parseArrayInitDeclarator(const TPublicType &elementType,
                                   const TSourceLoc &identifierLocation,
                                   const TString &identifier,
                                   const TSourceLoc &indexLocation,
-                                  TIntermTyped *indexExpression,
+                                  const TVector<unsigned int> &arraySizes,
                                   const TSourceLoc &initLocation,
                                   TIntermTyped *initializer,
                                   TIntermDeclaration *declarationOut);
+
+    TIntermNode *addEmptyStatement(const TSourceLoc &location);
 
     void parseDefaultPrecisionQualifier(const TPrecision precision,
                                         const TPublicType &type,
@@ -281,11 +296,12 @@ class TParseContext : angle::NonCopyable
     TParameter parseParameterDeclarator(const TPublicType &publicType,
                                         const TString *name,
                                         const TSourceLoc &nameLoc);
-    TParameter parseParameterArrayDeclarator(const TString *identifier,
-                                             const TSourceLoc &identifierLoc,
-                                             TIntermTyped *arraySize,
+
+    TParameter parseParameterArrayDeclarator(const TString *name,
+                                             const TSourceLoc &nameLoc,
+                                             const TVector<unsigned int> &arraySizes,
                                              const TSourceLoc &arrayLoc,
-                                             TPublicType *type);
+                                             TPublicType *elementType);
 
     TIntermTyped *addIndexExpression(TIntermTyped *baseExpression,
                                      const TSourceLoc &location,
@@ -296,20 +312,25 @@ class TParseContext : angle::NonCopyable
                                               const TSourceLoc &fieldLocation);
 
     // Parse declarator for a single field
-    TField *parseStructDeclarator(TString *identifier, const TSourceLoc &loc);
-    TField *parseStructArrayDeclarator(TString *identifier,
-                                       const TSourceLoc &loc,
-                                       TIntermTyped *arraySize,
-                                       const TSourceLoc &arraySizeLoc);
+    TDeclarator *parseStructDeclarator(const TString *identifier, const TSourceLoc &loc);
+    TDeclarator *parseStructArrayDeclarator(const TString *identifier,
+                                            const TSourceLoc &loc,
+                                            const TVector<unsigned int> *arraySizes);
 
+    void checkDoesNotHaveDuplicateFieldName(const TFieldList::const_iterator begin,
+                                            const TFieldList::const_iterator end,
+                                            const TString &name,
+                                            const TSourceLoc &location);
+    TFieldList *addStructFieldList(TFieldList *fields, const TSourceLoc &location);
     TFieldList *combineStructFieldLists(TFieldList *processedFields,
                                         const TFieldList *newlyAddedFields,
                                         const TSourceLoc &location);
     TFieldList *addStructDeclaratorListWithQualifiers(
         const TTypeQualifierBuilder &typeQualifierBuilder,
         TPublicType *typeSpecifier,
-        TFieldList *fieldList);
-    TFieldList *addStructDeclaratorList(const TPublicType &typeSpecifier, TFieldList *fieldList);
+        const TDeclaratorList *declaratorList);
+    TFieldList *addStructDeclaratorList(const TPublicType &typeSpecifier,
+                                        const TDeclaratorList *declaratorList);
     TTypeSpecifierNonArray addStructure(const TSourceLoc &structLine,
                                         const TSourceLoc &nameLine,
                                         const TString *structName,
@@ -397,6 +418,7 @@ class TParseContext : angle::NonCopyable
     void checkImageMemoryAccessForBuiltinFunctions(TIntermAggregate *functionCall);
     void checkImageMemoryAccessForUserDefinedFunctions(const TFunction *functionDefinition,
                                                        const TIntermAggregate *functionCall);
+    void checkAtomicMemoryBuiltinFunctions(TIntermAggregate *functionCall);
     TIntermSequence *createEmptyArgumentsList();
 
     // fnCall is only storing the built-in op, and function name or constructor type. arguments
@@ -437,14 +459,15 @@ class TParseContext : angle::NonCopyable
     // we treat it as always 4 in favour of the original interpretation in
     // "ARB_shader_atomic_counters".
     // TODO(jie.a.chen@intel.com): Double check this once the spec vagueness is resolved.
+    // Note that there may be tests in AtomicCounter_test that will need to be updated as well.
     constexpr static size_t kAtomicCounterArrayStride = 4;
 
     // Returns a clamped index. If it prints out an error message, the token is "[]".
-    int checkIndexOutOfRange(bool outOfRangeIndexIsError,
-                             const TSourceLoc &location,
-                             int index,
-                             int arraySize,
-                             const char *reason);
+    int checkIndexLessThan(bool outOfRangeIndexIsError,
+                           const TSourceLoc &location,
+                           int index,
+                           int arraySize,
+                           const char *reason);
 
     bool declareVariable(const TSourceLoc &line,
                          const TString &identifier,
@@ -453,7 +476,11 @@ class TParseContext : angle::NonCopyable
 
     void checkCanBeDeclaredWithoutInitializer(const TSourceLoc &line,
                                               const TString &identifier,
-                                              TPublicType *type);
+                                              TType *type);
+
+    TParameter parseParameterDeclarator(TType *type,
+                                        const TString *name,
+                                        const TSourceLoc &nameLoc);
 
     bool checkIsValidTypeAndQualifierForArray(const TSourceLoc &indexLocation,
                                               const TPublicType &elementType);
@@ -472,11 +499,9 @@ class TParseContext : angle::NonCopyable
                                            TLayoutImageInternalFormat internalFormat);
     void checkMemoryQualifierIsNotSpecified(const TMemoryQualifier &memoryQualifier,
                                             const TSourceLoc &location);
-    void checkAtomicCounterOffsetIsNotOverlapped(TPublicType &publicType,
-                                                 size_t size,
-                                                 bool forceAppend,
-                                                 const TSourceLoc &loc,
-                                                 TType &type);
+    void checkAtomicCounterOffsetDoesNotOverlap(bool forceAppend,
+                                                const TSourceLoc &loc,
+                                                TType *type);
     void checkBindingIsValid(const TSourceLoc &identifierLocation, const TType &type);
     void checkBindingIsNotSpecified(const TSourceLoc &location, int binding);
     void checkOffsetIsNotSpecified(const TSourceLoc &location, int offset);
@@ -502,6 +527,18 @@ class TParseContext : angle::NonCopyable
                                                             TType type,
                                                             const TSourceLoc &line);
 
+    // Will set the size of the outermost array according to geometry shader input layout.
+    void checkGeometryShaderInputAndSetArraySize(const TSourceLoc &location,
+                                                 const char *token,
+                                                 TType *type);
+
+    // Will size any unsized array type so unsized arrays won't need to be taken into account
+    // further along the line in parsing.
+    void checkIsNotUnsizedArray(const TSourceLoc &line,
+                                const char *errorMessage,
+                                const char *token,
+                                TType *arrayType);
+
     TIntermTyped *addBinaryMathInternal(TOperator op,
                                         TIntermTyped *left,
                                         TIntermTyped *right,
@@ -512,16 +549,20 @@ class TParseContext : angle::NonCopyable
                                 const TSourceLoc &loc);
     TIntermTyped *createUnaryMath(TOperator op, TIntermTyped *child, const TSourceLoc &loc);
 
-    TIntermTyped *addMethod(TFunction *fnCall,
+    TIntermTyped *addMethod(const TString &name,
                             TIntermSequence *arguments,
                             TIntermNode *thisNode,
                             const TSourceLoc &loc);
     TIntermTyped *addConstructor(TIntermSequence *arguments,
                                  TType type,
                                  const TSourceLoc &line);
-    TIntermTyped *addNonConstructorFunctionCall(TFunction *fnCall,
+    TIntermTyped *addNonConstructorFunctionCall(const TString &name,
                                                 TIntermSequence *arguments,
                                                 const TSourceLoc &loc);
+
+    // Return either the original expression or the folded version of the expression in case the
+    // folded node will validate the same way during subsequent parsing.
+    TIntermTyped *expressionOrFoldedResult(TIntermTyped *expression);
 
     // Return true if the checks pass
     bool binaryOpCommonCheck(TOperator op,
@@ -539,7 +580,7 @@ class TParseContext : angle::NonCopyable
     bool checkPrimitiveTypeMatchesTypeQualifier(const TTypeQualifier &typeQualifier);
     bool parseGeometryShaderInputLayoutQualifier(const TTypeQualifier &typeQualifier);
     bool parseGeometryShaderOutputLayoutQualifier(const TTypeQualifier &typeQualifier);
-    void setGeometryShaderInputArraySizes();
+    void setGeometryShaderInputArraySize(unsigned int inputArraySize, const TSourceLoc &line);
 
     // Set to true when the last/current declarator list was started with an empty declaration. The
     // non-empty declaration error check will need to be performed if the empty declaration is
@@ -606,8 +647,9 @@ class TParseContext : angle::NonCopyable
     int mGeometryShaderMaxVertices;
     int mMaxGeometryShaderInvocations;
     int mMaxGeometryShaderMaxVertices;
-    int mGeometryShaderInputArraySize;  // Track if all input array sizes are same and matches the
-                                        // latter input primitive declaration.
+
+    // Track if all input array sizes are same and matches the latter input primitive declaration.
+    unsigned int mGeometryShaderInputArraySize;
 };
 
 int PaParseStrings(size_t count,

@@ -67,7 +67,7 @@ class Renderer9 : public RendererD3D
 {
   public:
     explicit Renderer9(egl::Display *display);
-    virtual ~Renderer9();
+    ~Renderer9() override;
 
     egl::Error initialize() override;
     bool resetDevice() override;
@@ -120,12 +120,12 @@ class Renderer9 : public RendererD3D
                               D3DFORMAT Format,
                               IDirect3DIndexBuffer9 **ppIndexBuffer);
     gl::Error setSamplerState(const gl::Context *context,
-                              gl::SamplerType type,
+                              gl::ShaderType type,
                               int index,
                               gl::Texture *texture,
                               const gl::SamplerState &sampler);
     gl::Error setTexture(const gl::Context *context,
-                         gl::SamplerType type,
+                         gl::ShaderType type,
                          int index,
                          gl::Texture *texture);
 
@@ -167,7 +167,7 @@ class Renderer9 : public RendererD3D
 
     // lost device
     bool testDeviceLost() override;
-    bool testDeviceResettable();
+    bool testDeviceResettable() override;
 
     VendorID getVendorId() const;
     std::string getRendererDescription() const;
@@ -247,13 +247,13 @@ class Renderer9 : public RendererD3D
     // Shader operations
     gl::Error loadExecutable(const uint8_t *function,
                              size_t length,
-                             ShaderType type,
+                             gl::ShaderType type,
                              const std::vector<D3DVarying> &streamOutVaryings,
                              bool separatedOutputBuffers,
                              ShaderExecutableD3D **outExecutable) override;
     gl::Error compileToExecutable(gl::InfoLog &infoLog,
                                   const std::string &shaderHLSL,
-                                  ShaderType type,
+                                  gl::ShaderType type,
                                   const std::vector<D3DVarying> &streamOutVaryings,
                                   bool separatedOutputBuffers,
                                   const angle::CompilerWorkaroundsD3D &workarounds,
@@ -311,16 +311,15 @@ class Renderer9 : public RendererD3D
                                                       GLsizei height,
                                                       int levels,
                                                       int samples,
-                                                      GLboolean fixedSampleLocations) override;
+                                                      bool fixedSampleLocations) override;
 
     // Buffer creation
     VertexBuffer *createVertexBuffer() override;
     IndexBuffer *createIndexBuffer() override;
 
     // Stream Creation
-    StreamProducerImpl *createStreamProducerD3DTextureNV12(
-        egl::Stream::ConsumerType consumerType,
-        const egl::AttributeMap &attribs) override;
+    StreamProducerImpl *createStreamProducerD3DTexture(egl::Stream::ConsumerType consumerType,
+                                                       const egl::AttributeMap &attribs) override;
 
     // Buffer-to-texture and Texture-to-buffer copies
     bool supportsFastCopyBufferToTexture(GLenum internalFormat) const override;
@@ -353,7 +352,7 @@ class Renderer9 : public RendererD3D
                                  IDirect3DSurface9 *source,
                                  bool fromManaged);
 
-    RendererClass getRendererClass() const override { return RENDERER_D3D9; }
+    RendererClass getRendererClass() const override;
 
     D3DDEVTYPE getD3D9DeviceType() const { return mDeviceType; }
 
@@ -386,7 +385,7 @@ class Renderer9 : public RendererD3D
                                 const float clearDepthValue,
                                 const unsigned int clearStencilValue) override;
 
-    bool canSelectViewInVertexShader() const override { return false; }
+    bool canSelectViewInVertexShader() const override;
 
   private:
     gl::Error drawArraysImpl(const gl::Context *context,
@@ -404,10 +403,7 @@ class Renderer9 : public RendererD3D
     gl::Error applyShaders(const gl::Context *context, GLenum drawMode);
 
     gl::Error applyTextures(const gl::Context *context);
-    gl::Error applyTextures(const gl::Context *context,
-                            gl::SamplerType shaderType,
-                            const FramebufferTextureArray &framebufferTextures,
-                            size_t framebufferTextureCount);
+    gl::Error applyTextures(const gl::Context *context, gl::ShaderType shaderType);
 
     void generateCaps(gl::Caps *outCaps,
                       gl::TextureCapsMap *outTextureCaps,

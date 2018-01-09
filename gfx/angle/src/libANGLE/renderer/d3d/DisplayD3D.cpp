@@ -206,12 +206,12 @@ ContextImpl *DisplayD3D::createContext(const gl::ContextState &state)
     return mRenderer->createContext(state);
 }
 
-StreamProducerImpl *DisplayD3D::createStreamProducerD3DTextureNV12(
+StreamProducerImpl *DisplayD3D::createStreamProducerD3DTexture(
     egl::Stream::ConsumerType consumerType,
     const egl::AttributeMap &attribs)
 {
     ASSERT(mRenderer != nullptr);
-    return mRenderer->createStreamProducerD3DTextureNV12(consumerType, attribs);
+    return mRenderer->createStreamProducerD3DTexture(consumerType, attribs);
 }
 
 egl::Error DisplayD3D::makeCurrent(egl::Surface *drawSurface, egl::Surface *readSurface, gl::Context *context)
@@ -247,7 +247,7 @@ bool DisplayD3D::testDeviceLost()
 egl::Error DisplayD3D::restoreLostDevice(const egl::Display *display)
 {
     // Release surface resources to make the Reset() succeed
-    for (auto &surface : mState.surfaceSet)
+    for (egl::Surface *surface : mState.surfaceSet)
     {
         if (surface->getBoundTexture())
         {
@@ -263,7 +263,7 @@ egl::Error DisplayD3D::restoreLostDevice(const egl::Display *display)
     }
 
     // Restore any surfaces that may have been lost
-    for (const auto &surface : mState.surfaceSet)
+    for (const egl::Surface *surface : mState.surfaceSet)
     {
         SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface);
 
@@ -324,7 +324,7 @@ void DisplayD3D::generateCaps(egl::Caps *outCaps) const
 
 egl::Error DisplayD3D::waitClient(const gl::Context *context) const
 {
-    for (auto &surface : mState.surfaceSet)
+    for (egl::Surface *surface : mState.surfaceSet)
     {
         SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface);
         ANGLE_TRY(surfaceD3D->checkForOutOfDateSwapChain(context));

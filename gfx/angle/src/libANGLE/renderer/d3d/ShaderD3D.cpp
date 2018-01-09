@@ -73,6 +73,10 @@ ShaderD3D::ShaderD3D(const gl::ShaderState &data,
     {
         mAdditionalOptions |= SH_EMULATE_ISNAN_FLOAT_FUNCTION;
     }
+    if (workarounds.skipConstantRegisterZero)
+    {
+        mAdditionalOptions |= SH_SKIP_D3D_CONSTANT_REGISTER_ZERO;
+    }
     if (extensions.multiview)
     {
         mAdditionalOptions |= SH_INITIALIZE_BUILTINS_FOR_INSTANCED_MULTIVIEW;
@@ -182,9 +186,9 @@ ShCompileOptions ShaderD3D::prepareSourceAndReturnOptions(std::stringstream *sha
     return additionalOptions;
 }
 
-bool ShaderD3D::hasUniform(const D3DUniform *d3dUniform) const
+bool ShaderD3D::hasUniform(const std::string &name) const
 {
-    return mUniformRegisterMap.find(d3dUniform->name) != mUniformRegisterMap.end();
+    return mUniformRegisterMap.find(name) != mUniformRegisterMap.end();
 }
 
 const std::map<std::string, unsigned int> &GetUniformRegisterMap(

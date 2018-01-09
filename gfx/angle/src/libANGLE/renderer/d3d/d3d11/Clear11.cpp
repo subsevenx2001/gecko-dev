@@ -1,4 +1,4 @@
-//
+
 // Copyright (c) 2013 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
@@ -56,9 +56,8 @@ namespace rx
 
 namespace
 {
-
-static constexpr uint32_t g_ConstantBufferSize = sizeof(RtvDsvClearInfo<float>);
-static constexpr uint32_t g_VertexSize         = sizeof(d3d11::PositionVertex);
+constexpr uint32_t g_ConstantBufferSize = sizeof(RtvDsvClearInfo<float>);
+constexpr uint32_t g_VertexSize         = sizeof(d3d11::PositionVertex);
 
 // Updates color, depth and alpha components of cached CB if necessary.
 // Returns true if any constants are updated, false otherwise.
@@ -307,8 +306,6 @@ gl::Error Clear11::ensureResourcesInitialized()
     mBlendStateKey.blendState.blendEquationAlpha    = GL_FUNC_ADD;
     mBlendStateKey.blendState.sampleAlphaToCoverage = false;
     mBlendStateKey.blendState.dither                = true;
-    mBlendStateKey.mrt                              = false;
-    memset(mBlendStateKey.rtvMasks, 0, sizeof(mBlendStateKey.rtvMasks));
 
     mResourcesInitialized = true;
     return gl::NoError();
@@ -425,7 +422,7 @@ gl::Error Clear11::clearFramebuffer(const gl::Context *context,
     }
     else
     {
-        const auto colorAttachment = fboData.getFirstColorAttachment();
+        const gl::FramebufferAttachment *colorAttachment = fboData.getFirstColorAttachment();
 
         if (!colorAttachment)
         {
@@ -692,7 +689,7 @@ gl::Error Clear11::clearFramebuffer(const gl::Context *context,
     mBlendStateKey.blendState.colorMaskGreen = clearParams.colorMaskGreen;
     mBlendStateKey.blendState.colorMaskBlue  = clearParams.colorMaskBlue;
     mBlendStateKey.blendState.colorMaskAlpha = clearParams.colorMaskAlpha;
-    mBlendStateKey.mrt                       = numRtvs > 1;
+    mBlendStateKey.rtvMax                    = numRtvs;
     memcpy(mBlendStateKey.rtvMasks, &rtvMasks[0], sizeof(mBlendStateKey.rtvMasks));
 
     // Get BlendState
@@ -744,12 +741,8 @@ gl::Error Clear11::clearFramebuffer(const gl::Context *context,
         // Update the constant buffer with the updated cache contents
         // TODO(Shahmeer): Consider using UpdateSubresource1 D3D11_COPY_DISCARD where possible.
         D3D11_MAPPED_SUBRESOURCE mappedResource;
-        HRESULT result = deviceContext->Map(mConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0,
-                                            &mappedResource);
-        if (FAILED(result))
-        {
-            return gl::OutOfMemory() << "Clear11: Failed to map CB, " << gl::FmtHR(result);
-        }
+        ANGLE_TRY(mRenderer->mapResource(mConstantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0,
+                                         &mappedResource));
 
         memcpy(mappedResource.pData, &mShaderData, g_ConstantBufferSize);
         deviceContext->Unmap(mConstantBuffer.get(), 0);
@@ -832,4 +825,5 @@ gl::Error Clear11::clearFramebuffer(const gl::Context *context,
 
     return gl::NoError();
 }
+
 }  // namespace rx

@@ -18,6 +18,7 @@
 #include "libANGLE/Device.h"
 #include "libANGLE/Version.h"
 #include "libANGLE/WorkerThread.h"
+#include "libANGLE/angletypes.h"
 #include "libANGLE/formatutils.h"
 #include "libANGLE/renderer/d3d/VertexDataManager.h"
 #include "libANGLE/renderer/d3d/formatutilsD3D.h"
@@ -72,15 +73,6 @@ enum RendererClass
     RENDERER_D3D9
 };
 
-enum ShaderType
-{
-    SHADER_VERTEX,
-    SHADER_PIXEL,
-    SHADER_GEOMETRY,
-    SHADER_COMPUTE,
-    SHADER_TYPE_MAX
-};
-
 // Useful for unit testing
 class BufferFactoryD3D : angle::NonCopyable
 {
@@ -104,15 +96,13 @@ class BufferFactoryD3D : angle::NonCopyable
         GLsizei instances) const = 0;
 };
 
-using AttribIndexArray = std::array<int, gl::MAX_VERTEX_ATTRIBS>;
-using FramebufferTextureArray =
-    std::array<gl::Texture *, gl::IMPLEMENTATION_MAX_FRAMEBUFFER_ATTACHMENTS>;
+using AttribIndexArray = gl::AttribArray<int>;
 
-class RendererD3D : public BufferFactoryD3D
+class RendererD3D : public BufferFactoryD3D, public MultisampleTextureInitializer
 {
   public:
     explicit RendererD3D(egl::Display *display);
-    virtual ~RendererD3D();
+    ~RendererD3D() override;
 
     virtual egl::Error initialize() = 0;
 
@@ -210,13 +200,13 @@ class RendererD3D : public BufferFactoryD3D
     // Shader operations
     virtual gl::Error loadExecutable(const uint8_t *function,
                                      size_t length,
-                                     ShaderType type,
+                                     gl::ShaderType type,
                                      const std::vector<D3DVarying> &streamOutVaryings,
                                      bool separatedOutputBuffers,
-                                     ShaderExecutableD3D **outExecutable) = 0;
+                                     ShaderExecutableD3D **outExecutable)      = 0;
     virtual gl::Error compileToExecutable(gl::InfoLog &infoLog,
                                           const std::string &shaderHLSL,
-                                          ShaderType type,
+                                          gl::ShaderType type,
                                           const std::vector<D3DVarying> &streamOutVaryings,
                                           bool separatedOutputBuffers,
                                           const angle::CompilerWorkaroundsD3D &workarounds,
@@ -256,7 +246,7 @@ class RendererD3D : public BufferFactoryD3D
                                                               GLsizei height,
                                                               int levels,
                                                               int samples,
-                                                              GLboolean fixedSampleLocations) = 0;
+                                                              bool fixedSampleLocations) = 0;
 
     // Buffer-to-texture and Texture-to-buffer copies
     virtual bool supportsFastCopyBufferToTexture(GLenum internalFormat) const = 0;
@@ -293,7 +283,7 @@ class RendererD3D : public BufferFactoryD3D
     bool presentPathFastEnabled() const { return mPresentPathFastEnabled; }
 
     // Stream creation
-    virtual StreamProducerImpl *createStreamProducerD3DTextureNV12(
+    virtual StreamProducerImpl *createStreamProducerD3DTexture(
         egl::Stream::ConsumerType consumerType,
         const egl::AttributeMap &attribs) = 0;
 
@@ -307,12 +297,9 @@ class RendererD3D : public BufferFactoryD3D
 
     virtual gl::Version getMaxSupportedESVersion() const = 0;
 
+    gl::Error initRenderTarget(RenderTargetD3D *renderTarget);
+
     angle::WorkerThreadPool *getWorkerThreadPool();
-
-    bool isRobustResourceInitEnabled() const;
-
-    size_t getBoundFramebufferTextures(const gl::ContextState &data,
-                                       FramebufferTextureArray *outTextureArray);
 
     gl::Error getIncompleteTexture(const gl::Context *context,
                                    GLenum type,
@@ -322,6 +309,12 @@ class RendererD3D : public BufferFactoryD3D
 
     virtual bool canSelectViewInVertexShader() const = 0;
 
+    gl::Error initializeMultisampleTextureToBlack(const gl::Context *context,
+                                                  gl::Texture *glTexture) override;
+
+    // Should really be handled by Program dirty bits, but that requires splitting Program9/11.
+    virtual void onDirtyUniformBlockBinding(GLuint uniformBlockIndex);
+
   protected:
     virtual bool getLUID(LUID *adapterLuid) const = 0;
     virtual void generateCaps(gl::Caps *outCaps,
@@ -330,8 +323,6 @@ class RendererD3D : public BufferFactoryD3D
                               gl::Limitations *outLimitations) const = 0;
 
     void cleanup();
-
-    // dirtyPointer is a special value that will make the comparison with any valid pointer fail and force the renderer to re-apply the state.
 
     bool skipDraw(const gl::State &glState, GLenum drawMode);
 
@@ -350,7 +341,7 @@ class RendererD3D : public BufferFactoryD3D
     mutable gl::Extensions mNativeExtensions;
     mutable gl::Limitations mNativeLimitations;
 
-    gl::TextureMap mIncompleteTextures;
+    IncompleteTextureSet mIncompleteTextures;
 
     mutable bool mWorkaroundsInitialized;
     mutable angle::WorkaroundsD3D mWorkarounds;

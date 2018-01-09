@@ -50,7 +50,8 @@ Compiler::Compiler(rx::GLImplFactory *implFactory, const ContextState &state)
       mResources(),
       mFragmentCompiler(nullptr),
       mVertexCompiler(nullptr),
-      mComputeCompiler(nullptr)
+      mComputeCompiler(nullptr),
+      mGeometryCompiler(nullptr)
 {
     ASSERT(state.getClientMajorVersion() == 2 || state.getClientMajorVersion() == 3);
 
@@ -129,6 +130,21 @@ Compiler::Compiler(rx::GLImplFactory *implFactory, const ContextState &state)
     {
         mResources.MaxDrawBuffers = 1;
     }
+
+    // Geometry Shader constants
+    mResources.EXT_geometry_shader              = extensions.geometryShader;
+    mResources.MaxGeometryUniformComponents     = caps.maxGeometryUniformComponents;
+    mResources.MaxGeometryUniformBlocks         = caps.maxGeometryUniformBlocks;
+    mResources.MaxGeometryInputComponents       = caps.maxGeometryInputComponents;
+    mResources.MaxGeometryOutputComponents      = caps.maxGeometryOutputComponents;
+    mResources.MaxGeometryOutputVertices        = caps.maxGeometryOutputVertices;
+    mResources.MaxGeometryTotalOutputComponents = caps.maxGeometryTotalOutputComponents;
+    mResources.MaxGeometryTextureImageUnits     = caps.maxGeometryTextureImageUnits;
+    mResources.MaxGeometryAtomicCounterBuffers  = caps.maxGeometryAtomicCounterBuffers;
+    mResources.MaxGeometryAtomicCounters        = caps.maxGeometryAtomicCounters;
+    mResources.MaxGeometryShaderStorageBlocks   = caps.maxGeometryShaderStorageBlocks;
+    mResources.MaxGeometryShaderInvocations     = caps.maxGeometryShaderInvocations;
+    mResources.MaxGeometryImageUniforms         = caps.maxGeometryImageUniforms;
 }
 
 Compiler::~Compiler()
@@ -160,6 +176,15 @@ Compiler::~Compiler()
         activeCompilerHandles--;
     }
 
+    if (mGeometryCompiler)
+    {
+        sh::Destruct(mGeometryCompiler);
+        mGeometryCompiler = nullptr;
+
+        ASSERT(activeCompilerHandles > 0);
+        activeCompilerHandles--;
+    }
+
     if (activeCompilerHandles == 0)
     {
         sh::Finalize();
@@ -182,6 +207,9 @@ ShHandle Compiler::getCompilerHandle(GLenum type)
             break;
         case GL_COMPUTE_SHADER:
             compiler = &mComputeCompiler;
+            break;
+        case GL_GEOMETRY_SHADER_EXT:
+            compiler = &mGeometryCompiler;
             break;
         default:
             UNREACHABLE();
