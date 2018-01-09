@@ -8,7 +8,7 @@
 #
 # WARNING WARNING WARNING
 #
-UNIFIED_SOURCES += [
+SOURCES += [
     'entry_points_egl.cpp',
     'entry_points_egl_ext.cpp',
     'entry_points_gles_2_0_autogen.cpp',
