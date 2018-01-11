@@ -438,7 +438,7 @@ ShaderValidator::CalcNumSamplerUniforms() const
         if (type == LOCAL_GL_SAMPLER_2D ||
             type == LOCAL_GL_SAMPLER_CUBE)
         {
-            accum += itr->arraySize;
+            accum += itr->getArraySizeProduct();
         }
     }
 
