@@ -24,7 +24,7 @@ StreamFromD3DTexture(ID3D11Texture2D* const texD3D, const EGLAttrib* const postA
 {
     auto& egl = sEGLLibrary;
     if (!egl.IsExtensionSupported(GLLibraryEGL::NV_stream_consumer_gltexture_yuv) ||
-        !egl.IsExtensionSupported(GLLibraryEGL::ANGLE_stream_producer_d3d_texture_nv12))
+        !egl.IsExtensionSupported(GLLibraryEGL::ANGLE_stream_producer_d3d_texture))
     {
         return 0;
     }
@@ -38,10 +38,10 @@ StreamFromD3DTexture(ID3D11Texture2D* const texD3D, const EGLAttrib* const postA
     MOZ_ALWAYS_TRUE( ok &= bool(egl.fStreamConsumerGLTextureExternalAttribsNV(display,
                                                                               stream,
                                                                               nullptr)) );
-    MOZ_ALWAYS_TRUE( ok &= bool(egl.fCreateStreamProducerD3DTextureNV12ANGLE(display,
+    MOZ_ALWAYS_TRUE( ok &= bool(egl.fCreateStreamProducerD3DTextureANGLE(display,
                                                                              stream,
                                                                              nullptr)) );
-    MOZ_ALWAYS_TRUE( ok &= bool(egl.fStreamPostD3DTextureNV12ANGLE(display, stream,
+    MOZ_ALWAYS_TRUE( ok &= bool(egl.fStreamPostD3DTextureANGLE(display, stream,
                                                                    texD3D,
                                                                    postAttribs)) );
     if (ok)

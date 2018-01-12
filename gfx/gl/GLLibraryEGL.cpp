@@ -59,7 +59,7 @@ static const char* sEGLExtensionNames[] = {
     "EGL_KHR_stream_consumer_gltexture",
     "EGL_EXT_device_query",
     "EGL_NV_stream_consumer_gltexture_yuv",
-    "EGL_ANGLE_stream_producer_d3d_texture_nv12",
+    "EGL_ANGLE_stream_producer_d3d_texture",
     "EGL_ANGLE_device_creation",
     "EGL_ANGLE_device_creation_d3d11",
 };
@@ -697,15 +697,15 @@ GLLibraryEGL::EnsureInitialized(bool forceAccel, nsACString* const out_failureId
         }
     }
 
-    if (IsExtensionSupported(ANGLE_stream_producer_d3d_texture_nv12)) {
+    if (IsExtensionSupported(ANGLE_stream_producer_d3d_texture)) {
         const GLLibraryLoader::SymLoadStruct nvStreamSymbols[] = {
-            SYMBOL(CreateStreamProducerD3DTextureNV12ANGLE),
-            SYMBOL(StreamPostD3DTextureNV12ANGLE),
+            SYMBOL(CreateStreamProducerD3DTextureANGLE),
+            SYMBOL(StreamPostD3DTextureANGLE),
             END_OF_SYMBOLS
         };
         if (!fnLoadSymbols(nvStreamSymbols)) {
-            NS_ERROR("EGL supports ANGLE_stream_producer_d3d_texture_nv12 without exposing its functions!");
-            MarkExtensionUnsupported(ANGLE_stream_producer_d3d_texture_nv12);
+            NS_ERROR("EGL supports ANGLE_stream_producer_d3d_texture without exposing its functions!");
+            MarkExtensionUnsupported(ANGLE_stream_producer_d3d_texture);
         }
     }
 
